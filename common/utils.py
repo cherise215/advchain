@@ -127,14 +127,22 @@ def random_chain(alist, *args):
     length = len(alist)
     assert length >= 1, "input list must contains at least one element"
     if length == 1:
-        return alist
+        results = [alist]
+        if len(args) > 0:
+            for arg in args:
+                assert len(arg) == 1, 'must share equal size'
+                results.append(arg)
+
+            return results
+        else:
+            return results
 
     sub_len = np.random.randint(low=1, high=length+1)
 
     r = random.random()            # randomly generating a real in [0,1)
     # lambda : r is an unary function which returns r
     random.shuffle(alist, lambda: r)
-    # using the same function as used in prev line so that shuffling order is same
+    # using the same function as used in prev line so that shuffling order is the same
     results = []
     results.append(alist[:sub_len])
     if len(args) >= 0:

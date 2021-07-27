@@ -105,9 +105,9 @@ class AdvBias(AdvTransformBase):
             self.param = self.unit_normalize(self.param.data)
         self.param = torch.nn.Parameter(self.param.data, requires_grad=True)
 
-    # def rescale_parameters(self):
-    #     # restrict control points values in the 1-ball space
-    #     self.param = self.unit_normalize(self.param, p_type='l2')
+    def rescale_parameters(self):
+        # restrict control points values in the 1-ball space
+        self.param = self.unit_normalize(self.param, p_type='l2')
 
     def optimize_parameters(self, step_size=0.3):
         if self.power_iteration:
@@ -131,7 +131,7 @@ class AdvBias(AdvTransformBase):
         tensor: transformed images
         '''
         assert self.param is not None, 'init param before transform data'
-        if self.power_iteration:
+        if self.power_iteration and self.is_training:
             bias_field = self.compute_smoothed_bias(self.xi*self.param)
         else:
             bias_field = self.compute_smoothed_bias(self.param)
