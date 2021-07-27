@@ -2,8 +2,31 @@ import os
 import torch
 import contextlib
 import numpy as np
-from models.unet import UNet
+import SimpleITK as sitk
 import random
+
+from models.unet import UNet
+
+
+def load_image_label(image_path, label_path, slice_id=0, crop_size=(192, 192)):
+
+    image = sitk.GetArrayFromImage(sitk.ReadImage(image_path))[slice_id]
+    label = sitk.GetArrayFromImage(sitk.ReadImage(label_path))[slice_id]
+
+    print('image size:', image.shape)
+    print('label size:', label.shape)
+    h_diff = (image.shape[0]-crop_size[0])//2
+    w_diff = (image.shape[1]-crop_size[1])//2
+
+    cropped_image = image[h_diff:crop_size[0] +
+                          h_diff, w_diff:crop_size[1]+w_diff]
+    cropped_label = label[h_diff:crop_size[0] +
+                          h_diff, w_diff:crop_size[1]+w_diff]
+
+    # rescale image intensities to 0-1
+    cropped_image = (cropped_image-cropped_image.min()) / \
+        (cropped_image.max()-cropped_image.min()+1e-10)
+    return cropped_image, cropped_label
 
 
 def rescale_intensity(data, new_min=0, new_max=1, eps=1e-20):

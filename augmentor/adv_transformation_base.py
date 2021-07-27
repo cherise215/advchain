@@ -11,8 +11,8 @@ class AdvTransformBase(object):
     def __init__(self,
                  config_dict={
                  },
-                 use_gpu: bool = True,
-                 debug: bool = False):
+                 use_gpu = True,
+                 debug = False):
         '''
 
 
