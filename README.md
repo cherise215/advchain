@@ -1,4 +1,4 @@
-# Adversarial Data Augmentation with chained transformations (Advchain)
+# Adversarial Data Augmentation with Chained Transformations (AdvChain)
 
 This repo contains the pytorch implementation of adversarial data augmentation, which supports to perform adversarial training on a chain of image photometric transformations and geometric transformations for improved consistency regularization.
 Please cite our work if you find it useful in your work
