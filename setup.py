@@ -2,7 +2,7 @@ from distutils.core import setup
 setup(
     name='advchain',
     packages=['advchain'],
-    version='0.1(beta)',
+    version='0.13',
     # Chose a license from here: https://help.github.com/articles/licensing-a-repository
     license='MIT',
     description='a plug-in module for adversarial data augmentor with chained transformations',
@@ -12,12 +12,12 @@ setup(
     download_url='https://github.com/cherise215/advchain/archive/refs/tags/v_01.zip',
     keywords=['data augmentation', 'pytorch', 'segmentation'],
     install_requires=[
-        'matplotlib',
-        'seaborn',
         'numpy',
         'SimpleITK',
         'scikit-image',
-        'torch'
+        'numpy>=1.15',
+        'scipy',
+        'torch>=1.1',
     ],
     classifiers=[
         # Chose either "3 - Alpha", "4 - Beta" or "5 - Production/Stable" as the current state of your package
