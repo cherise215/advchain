@@ -24,7 +24,7 @@ class AdvAffine(AdvTransformBase):
                      'backward_interp': 'bilinear'
                  },
                  power_iteration=False,
-                 use_gpu: bool = True, debug: bool = False):
+                 use_gpu = True, debug = False):
         '''
         initialization
         '''

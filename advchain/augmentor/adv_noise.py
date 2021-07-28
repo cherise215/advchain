@@ -15,7 +15,7 @@ class AdvNoise(AdvTransformBase):
                               'data_size': [10, 1, 8, 8]
                               },
                  power_iteration=False,
-                 use_gpu = True, debug = False):
+                 use_gpu=True, debug=False):
         '''
         initialization
 
