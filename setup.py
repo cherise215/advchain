@@ -2,7 +2,7 @@ from distutils.core import setup
 setup(
     name='advchain',
     packages=['advchain'],
-    version='0.1',
+    version='0.1(beta)',
     # Chose a license from here: https://help.github.com/articles/licensing-a-repository
     license='MIT',
     description='a plug-in module for adversarial data augmentor with chained transformations',
@@ -16,7 +16,7 @@ setup(
         'seaborn',
         'numpy',
         'SimpleITK',
-        'skimage',
+        'scikit-image',
         'torch'
     ],
     classifiers=[
