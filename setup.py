@@ -1,30 +1,26 @@
-from distutils.core import setup
-setup(
-    name='advchain',
-    packages=['advchain'],
-    version='0.13',
-    # Chose a license from here: https://help.github.com/articles/licensing-a-repository
-    license='MIT',
-    description='a plug-in module for adversarial data augmentor with chained transformations',
-    author='Chen (Cherise) Chen',
-    author_email='work.cherise@gmail.com',
-    url='https://github.com/cherise215/',
-    download_url='https://github.com/cherise215/advchain/archive/refs/tags/v_01.zip',
-    keywords=['data augmentation', 'pytorch', 'segmentation'],
-    install_requires=[
-        'numpy',
-        'SimpleITK',
-        'scikit-image',
-        'numpy>=1.15',
-        'scipy',
-        'torch>=1.1',
-    ],
+import setuptools
+
+with open("README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
+
+setuptools.setup(
+    name="advchain",
+    version="0.15",
+    author="Chen (Cherise) Chen",
+    author_email="work.cherise@gmail.com",
+    description="adversarial data augmentation with chained  transformations",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url="https://github.com/cherise215/advchain",
+    project_urls={
+        "Bug Tracker": "https://github.com/cherise215/advchain/issues",
+    },
     classifiers=[
-        # Chose either "3 - Alpha", "4 - Beta" or "5 - Production/Stable" as the current state of your package
-        'Development Status :: 3 - Alpha',
-        'Intended Audience :: Developers',
-        'Topic :: Software Development :: Build Tools',
-        'License :: OSI Approved :: MIT License',   # Again, pick a license
-        'Programming Language :: Python :: 3.6',
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
     ],
+    package_dir={"": "advchain"},
+    packages=setuptools.find_packages(where="advchain"),
+    python_requires=">=3.6",
 )
