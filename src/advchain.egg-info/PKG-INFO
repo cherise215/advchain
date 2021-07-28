@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: advchain
-Version: 0.18
+Version: 0.19.2
 Summary: adversarial data augmentation with chained  transformations
 Home-page: https://github.com/cherise215/advchain
 Author: Chen (Cherise) Chen

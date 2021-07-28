@@ -1,11 +1,11 @@
-import setuptools
+from distutils.core import setup
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-setuptools.setup(
+setup(
     name="advchain",
-    version="0.18",
+    version="0.19.2",
     author="Chen (Cherise) Chen",
     author_email="work.cherise@gmail.com",
     description="adversarial data augmentation with chained  transformations",
@@ -20,7 +20,13 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
+    install_requires=[            # I get to this in a second
+        'torch>=1.6',
+        'numpy',
+        'SimpleITK',
+        'scikit-image',
+    ],
     package_dir={"": "src"},
-    packages=setuptools.find_packages(where="src"),
+    packages=find_packages(where="advchain"),
     python_requires=">=3.6",
 )
