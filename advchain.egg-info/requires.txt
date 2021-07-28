@@ -2,3 +2,6 @@ torch>=1.6
 numpy
 SimpleITK
 scikit-image
+
+[plot]
+matplotlib

@@ -1,18 +1,27 @@
 Metadata-Version: 2.1
 Name: advchain
-Version: 0.18
-Summary: adversarial data augmentation with chained  transformations
+Version: 0.19.7
+Summary: adversarial data augmentation with chained transformations
 Home-page: https://github.com/cherise215/advchain
 Author: Chen (Cherise) Chen
 Author-email: work.cherise@gmail.com
 License: UNKNOWN
 Project-URL: Bug Tracker, https://github.com/cherise215/advchain/issues
+Keywords: advchain
 Platform: UNKNOWN
-Classifier: Programming Language :: Python :: 3
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Software Development :: Build Tools
 Classifier: License :: OSI Approved :: MIT License
-Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3 :: Only
 Requires-Python: >=3.6
 Description-Content-Type: text/markdown
+Provides-Extra: plot
 License-File: LICENSE
 
 # Adversarial Data Augmentation with Chained Transformations (AdvChain)
