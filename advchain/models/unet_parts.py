@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 # sub-parts of the U-Net models
+import logging
 
 import torch
 import torch.nn as nn
@@ -8,6 +9,8 @@ import torch.nn.functional as F
 from torch.nn.utils import spectral_norm
 
 from advchain.models.init_weight import init_weights
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class double_conv(nn.Module):
@@ -161,7 +164,7 @@ class inconv(nn.Module):
         self.dropout = dropout
         if not self.dropout is None:
             self.drop = nn.Dropout2d(p=dropout)
-            print('enable dropout')
+            logging.info('enable dropout')
 
     def forward(self, x):
         x = self.conv(x)
@@ -239,7 +242,7 @@ class domain_inconv(nn.Module):
         self.dropout = dropout
         if not self.dropout is None:
             self.drop = nn.Dropout2d(p=dropout)
-            print('enable dropout')
+            logging.info('enable dropout')
 
     def forward(self, x, domain_id):
         x = self.conv(x, domain_id)
@@ -402,7 +405,7 @@ class res_bilinear_up(nn.Module):
 
     def forward(self, x1, x2):
         upsampled = self.mpconv(x1)
-        # print (upsampled.size())
+        # logging.info (upsampled.size())
         combined = torch.cat([upsampled, x2], dim=1)
         out = self.conv_input(combined)
         res_x = self.last_act(out+self.conv(combined))
@@ -517,7 +520,7 @@ class up(nn.Module):
         self.dropout = dropout
         if not self.dropout is None:
             self.drop = nn.Dropout2d(p=dropout)
-            print('enable dropout')
+            logging.info('enable dropout')
 
     def forward(self, x1, x2):
 
@@ -561,7 +564,7 @@ class domain_up(nn.Module):
         self.dropout = dropout
         if not self.dropout is None:
             self.drop = nn.Dropout2d(p=dropout)
-            print('enable dropout')
+            logging.info('enable dropout')
 
     def forward(self, x1, x2, domain_id):
 
@@ -610,7 +613,7 @@ class sqe_up(nn.Module):
         self.dropout = dropout
         if not self.dropout is None:
             self.drop = nn.Dropout2d(p=dropout)
-            print('enable dropout')
+            logging.info('enable dropout')
 
     def forward(self, x1, x2):
 

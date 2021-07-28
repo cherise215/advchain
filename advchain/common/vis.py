@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-# adv noise
 
 
 def plot_image(data, ax=None, font_size=12, title="before"):

@@ -1,8 +1,11 @@
-import torch
-import torch.nn.functional as F
-import numpy as np
-
 from advchain.augmentor.adv_transformation_base import AdvTransformBase
+import numpy as np
+import torch.nn.functional as F
+import torch
+
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def bspline_kernel_2d(sigma=[1, 1], order=3, asTensor=False, dtype=torch.float32, device='gpu'):
@@ -145,12 +148,13 @@ class AdvBias(AdvTransformBase):
 
         transformed_input = bias_field*data
         if self.debug:
-            print('bias transformed', transformed_input.size())
+            logging.info('bias transformed', transformed_input.size())
         return transformed_input
 
     def backward(self, data):
         if self.debug:
-            print('max magnitude', torch.max(torch.abs(self.bias_field-1)))
+            logging.info('max magnitude', torch.max(
+                torch.abs(self.bias_field-1)))
         return data
 
     def predict_forward(self, data):
@@ -224,7 +228,8 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         self.bias_field = self.compute_smoothed_bias(
             self.param, padding=self._padding, stride=self._stride)
         if self.debug:
-            print('initialize {} control points'.format(str(self.param.size())))
+            logging.info('initialize {} control points'.format(
+                str(self.param.size())))
 
         return self.param, self.interp_kernel, self.bias_field
 
@@ -250,7 +255,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
 
         # recover bias field to original image resolution for efficiency.
         if self.debug:
-            print('after intep, size:', bias_field_tmp.size())
+            logger.info('after intep, size:', bias_field_tmp.size())
         scale_factor_h = self._image_size[0] / bias_field_tmp.size(2)
         scale_factor_w = self._image_size[1] / bias_field_tmp.size(3)
 
@@ -283,7 +288,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         bias = bias_field-1
         bias_field = 1+torch.clamp(bias, -magnitude, magnitude)
         if self.debug:
-            print('max |bias-id|', torch.max(torch.abs(bias_field-1)))
+            logger.info('max |bias-id|', torch.max(torch.abs(bias_field-1)))
         return bias_field
 
     def get_bspline_kernel(self, spacing, order=3):

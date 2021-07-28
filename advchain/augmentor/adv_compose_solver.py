@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -87,7 +88,7 @@ class ComposeAdversarialTransformSolver(object):
             self.chain_of_transforms[i].power_iteration = power_iteration
 
         if step_sizes is None:
-            print('use default step size: 1 for every transformation')
+            logging.info('use default step size: 1 for every transformation')
             step_sizes = [1]*len(self.chain_of_transforms)
         else:
             assert len(step_sizes) == len(

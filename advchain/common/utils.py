@@ -1,9 +1,12 @@
+import logging
+
 import os
 import torch
 import contextlib
 import numpy as np
 import SimpleITK as sitk
 import random
+from pathlib import Path
 
 from advchain.models.unet import UNet
 
@@ -24,25 +27,45 @@ def check_dir(dir_path, create=False):
         return -1
 
 
-def load_image_label(image_path, label_path, slice_id=0, crop_size=(192, 192)):
+def load_image_label(image_path, label_path=None, slice_id=0, crop_size=(192, 192)):
+    """[summary]
+    loads image and labels (optional) from disk (Nifti, nrrd)
+    return cropped 3dim numpy array  [DHW] 
+    Args:
+        image_path ([type]): [description]
+        label_path ([type]): [description]
+        slice_id (int, optional): [description]. Defaults to 0.
+        crop_size (tuple, optional): [description]. Defaults to (192, 192).
+    Returns:
+        [type]: [description]
+    """
+    support_formats = ['.nrrd', '.nii', '.nii.gz']
+    assert Path(image_path).suffix in support_formats, 'only support loading images/labels with extensions:{}.'.format(
+        str(support_formats))
 
     image = sitk.GetArrayFromImage(sitk.ReadImage(image_path))[slice_id]
-    label = sitk.GetArrayFromImage(sitk.ReadImage(label_path))[slice_id]
+    logging.info('image size:', image.shape)
 
-    print('image size:', image.shape)
-    print('label size:', label.shape)
     h_diff = (image.shape[0]-crop_size[0])//2
     w_diff = (image.shape[1]-crop_size[1])//2
 
     cropped_image = image[h_diff:crop_size[0] +
                           h_diff, w_diff:crop_size[1]+w_diff]
-    cropped_label = label[h_diff:crop_size[0] +
-                          h_diff, w_diff:crop_size[1]+w_diff]
-
     # rescale image intensities to 0-1
     cropped_image = (cropped_image-cropped_image.min()) / \
         (cropped_image.max()-cropped_image.min()+1e-10)
-    return cropped_image, cropped_label
+
+    if label_path is not None:
+        label = sitk.GetArrayFromImage(sitk.ReadImage(label_path))[slice_id]
+        logging.info('label size:', label.shape)
+        assert image.shape == label.shape, "The sizes of the input image and label do not match, image:{}label:{}".format(
+            str(image.shape), str(label.shape))
+        cropped_label = label[h_diff:crop_size[0] +
+                              h_diff, w_diff:crop_size[1]+w_diff]
+
+        return cropped_image, cropped_label
+    else:
+        return cropped_image
 
 
 def rescale_intensity(data, new_min=0, new_max=1, eps=1e-20):

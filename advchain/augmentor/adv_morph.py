@@ -1,4 +1,4 @@
-
+import logging
 
 import torch
 import torch.nn as nn
@@ -6,6 +6,9 @@ import torch.nn.functional as F
 import math
 
 from advchain.augmentor.adv_transformation_base import AdvTransformBase
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def get_base_grid(batch_size, image_height, image_width, use_gpu=True):
@@ -227,7 +230,7 @@ class AdvMorph(AdvTransformBase):
         self.diff = transformed_image-data
         self.displacement = displacement
         if self.debug:
-            print('morph transformed', transformed_image.size())
+            logging.info('morph transformed', transformed_image.size())
         return transformed_image
 
     def backward(self, data, interpolation_mode=None):
@@ -245,7 +248,7 @@ class AdvMorph(AdvTransformBase):
         transformed_image = self.transform(
             data, dxy, mode=self.interpolator_mode)
         if self.debug:
-            print('morph back:', data.size())
+            logging.info('warp back:', data.size())
         return transformed_image
 
     def predict_forward(self, data):
@@ -383,7 +386,7 @@ class AdvMorph(AdvTransformBase):
         if step_size is None:
             self.step_size = step_size
         if self.debug:
-            print('optimize morph')
+            logging.info('optimize morph')
         if self.power_iteration:
             duv = self.unit_normalize(self.param.grad)
             param = duv.detach()

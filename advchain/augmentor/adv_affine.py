@@ -1,10 +1,14 @@
 
+import logging
 
 import torch
 import torch.nn.functional as F
 import math
 import matplotlib.pyplot as plt
 from advchain.augmentor.adv_transformation_base import AdvTransformBase
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class AdvAffine(AdvTransformBase):
@@ -80,7 +84,7 @@ class AdvAffine(AdvTransformBase):
         self.diff = data-transformed_input
 
         if self.debug:
-            print('afffine transformed', transformed_input.size())
+            logger.debug('afffine transformed', transformed_input.size())
         return transformed_input
 
     def predict_forward(self, data):
@@ -113,7 +117,7 @@ class AdvAffine(AdvTransformBase):
             self.step_size = step_size
         if self.debug:
             # we assume that affine parameters are independent to each other.
-            print('optimize affine')
+            logger.info('optimize affine')
 
         if self.power_iteration:
             grad = self.param.grad.sign()
@@ -182,7 +186,7 @@ class AdvAffine(AdvTransformBase):
         inverse_matrix = homo_matrix.inverse()
         inverse_matrix = inverse_matrix[:, :2, :]
         if self.debug:
-            print('inverse matrix', inverse_matrix.size())
+            logger.info('inverse matrix', inverse_matrix.size())
         return inverse_matrix
 
     def get_name(self):

@@ -6,6 +6,7 @@ from torch.nn import functional as F
 import torch
 from torch.nn.utils import spectral_norm
 
+
 class ChannelSELayer(nn.Module):
     """
     Re-implementation of Squeeze-and-Excitation (SE) block described in::
@@ -25,7 +26,8 @@ class ChannelSELayer(nn.Module):
     def forward(self, input_tensor):
         batch_size, num_channels, H, W = input_tensor.size()
         input_rank = len(input_tensor.shape)
-        squeeze_tensor = input_tensor.view(batch_size, num_channels, -1).mean(dim=2)
+        squeeze_tensor = input_tensor.view(
+            batch_size, num_channels, -1).mean(dim=2)
 
         # channel excitation
         fc_out_1 = self.relu(self.fc1(squeeze_tensor))
@@ -57,7 +59,8 @@ class SpatialSELayer(nn.Module):
         squeeze_tensor = self.sigmoid(self.conv(input_tensor))
 
         # spatial excitation
-        output_tensor = torch.mul(input_tensor, squeeze_tensor.view(batch_size, 1, a, b))
+        output_tensor = torch.mul(
+            input_tensor, squeeze_tensor.view(batch_size, 1, a, b))
 
         return output_tensor
 
@@ -76,11 +79,12 @@ class ChannelSpatialSELayer(nn.Module):
         self.sSE = SpatialSELayer(num_channels)
 
     def forward(self, input_tensor):
-        output_tensor = torch.max(self.cSE(input_tensor), self.sSE(input_tensor))
+        output_tensor = torch.max(
+            self.cSE(input_tensor), self.sSE(input_tensor))
         return output_tensor
 
-    
-def bilinear_additive_upsampling(x, output_channel_num ):
+
+def bilinear_additive_upsampling(x, output_channel_num):
     """
     pytorch implementation of Bilinear Additive Upsampling
     ref: @MikiBear_
@@ -89,44 +93,48 @@ def bilinear_additive_upsampling(x, output_channel_num ):
     https://gist.github.com/mikigom/bad72795c5e87e3caa9464e64952b524
     """
 
-    input_channel=x.size(1)
-    assert input_channel>output_channel_num
-    assert input_channel % output_channel_num == 0, 'input channel must could be equally divided by output_channel_num '
+    input_channel = x.size(1)
+    assert input_channel > output_channel_num, 'the number of output channels should not be greater than the number of  input channels'
+    assert input_channel % output_channel_num == 0, 'input channels must could be equally divided by output_channel_num '
     channel_split = int(input_channel / output_channel_num)
 
-    print (channel_split)
+    # print (channel_split)
 
-    new_h= x.size(2)*2
-    new_w=x.size(3)*2
-    upsampled_op=torch.nn.Upsample(scale_factor=2,mode='bilinear')
-    upsampled_x=upsampled_op(x)
+    new_h = x.size(2)*2
+    new_w = x.size(3)*2
+    upsampled_op = torch.nn.Upsample(scale_factor=2, mode='bilinear')
+    upsampled_x = upsampled_op(x)
 
-    print (upsampled_x.size())
+    # print(upsampled_x.size())
 
-    result=torch.zeros(x.size(0),output_channel_num,new_h,new_w)
-    for i in range(0,output_channel_num):
-        splited_upsampled_x = upsampled_x.narrow(1,start=i * channel_split,length=channel_split)
-        result[:,i,:,:]=torch.sum(splited_upsampled_x,1)
+    result = torch.zeros(x.size(0), output_channel_num, new_h, new_w)
+    for i in range(0, output_channel_num):
+        splited_upsampled_x = upsampled_x.narrow(
+            1, start=i * channel_split, length=channel_split)
+        result[:, i, :, :] = torch.sum(splited_upsampled_x, 1)
 
-    ## by default, should be cuda tensor.
-    result=result.cuda()
+    # by default, should be cuda tensor.
+    result = result.cuda()
     return result
 
 
 class Self_Attn(nn.Module):
     """ Self attention Layer"""
 
-    def __init__(self, in_dim, activation,factor=8, if_SN=False):
+    def __init__(self, in_dim, activation, factor=8, if_SN=False):
         super(Self_Attn, self).__init__()
         self.chanel_in = in_dim
         self.activation = activation
 
-        self.query_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim // factor, kernel_size=1)
-        self.key_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim // factor, kernel_size=1)
-        self.value_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim, kernel_size=1)
+        self.query_conv = nn.Conv2d(
+            in_channels=in_dim, out_channels=in_dim // factor, kernel_size=1)
+        self.key_conv = nn.Conv2d(
+            in_channels=in_dim, out_channels=in_dim // factor, kernel_size=1)
+        self.value_conv = nn.Conv2d(
+            in_channels=in_dim, out_channels=in_dim, kernel_size=1)
 
         if if_SN:
-            self.query_conv=spectral_norm(self.query_conv)
+            self.query_conv = spectral_norm(self.query_conv)
             self.key_conv = spectral_norm(self.key_conv)
             self.value_conv = spectral_norm(self.value_conv)
 
@@ -143,21 +151,26 @@ class Self_Attn(nn.Module):
                 attention: B X N X N (N is Width*Height)
         """
         m_batchsize, C, width, height = x.size()
-        proj_query = self.query_conv(x).view(m_batchsize, -1, width * height).permute(0, 2, 1)  # B X CX(N)
-        proj_key = self.key_conv(x).view(m_batchsize, -1, width * height)  # B X C x (*W*H)
+        proj_query = self.query_conv(x).view(
+            m_batchsize, -1, width * height).permute(0, 2, 1)  # B X CX(N)
+        proj_key = self.key_conv(x).view(
+            m_batchsize, -1, width * height)  # B X C x (*W*H)
         energy = torch.bmm(proj_query, proj_key)  # transpose check
         attention = self.softmax(energy)  # BX (N) X (N)
-        proj_value = self.value_conv(x).view(m_batchsize, -1, width * height)  # B X C X N
+        proj_value = self.value_conv(x).view(
+            m_batchsize, -1, width * height)  # B X C X N
 
         out = torch.bmm(proj_value, attention.permute(0, 2, 1))
         out = out.view(m_batchsize, C, width, height)
-        weighted_out= self.gamma * out
+        weighted_out = self.gamma * out
         final = weighted_out + x
-        return final, weighted_out,attention
-        
+        return final, weighted_out, attention
+
 ##################################################################################
 # Normalization layers
 ##################################################################################
+
+
 class AdaptiveInstanceNorm2d(nn.Module):
     def __init__(self, num_features, eps=1e-5, momentum=0.1):
         super(AdaptiveInstanceNorm2d, self).__init__()
@@ -190,7 +203,6 @@ class AdaptiveInstanceNorm2d(nn.Module):
         return self.__class__.__name__ + '(' + str(self.num_features) + ')'
 
 
-
 ##################################################################################
 # Normalization layers
 ##################################################################################
@@ -216,7 +228,7 @@ class AdaptiveBatchNorm2d(nn.Module):
 
         # Apply batchNorm
         #x_reshaped = x.contiguous().view(1, b * c, *x.size()[2:])
-        #nn.BatchNorm2d
+        # nn.BatchNorm2d
         out = F.batch_norm(
             x, running_mean, running_var, self.weight, self.bias,
             True, self.momentum, self.eps)
@@ -226,15 +238,15 @@ class AdaptiveBatchNorm2d(nn.Module):
     def __repr__(self):
         return self.__class__.__name__ + '(' + str(self.num_features) + ')'
 
-## Domain specific Batch Normalisation layer:
+# Domain specific Batch Normalisation layer:
 
 
-
-###Batch Instance Normalization
-## credit to : https://github.com/hyeonseob-nam/Batch-Instance-Normalization/blob/master/models/batchinstancenorm.py
+# Batch Instance Normalization
+# credit to : https://github.com/hyeonseob-nam/Batch-Instance-Normalization/blob/master/models/batchinstancenorm.py
 class _BatchInstanceNorm(_BatchNorm):
-    def __init__(self, num_features, eps=1e-5, momentum=0.1, affine=True,track_running_stats=True):
-        super(_BatchInstanceNorm, self).__init__(num_features, eps, momentum, affine,track_running_stats)
+    def __init__(self, num_features, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True):
+        super(_BatchInstanceNorm, self).__init__(
+            num_features, eps, momentum, affine, track_running_stats)
 
         if self.affine:
             self.gate = Parameter(torch.Tensor(num_features))
@@ -260,7 +272,7 @@ class _BatchInstanceNorm(_BatchNorm):
 
         # Instance norm
         b, c = input.size(0), input.size(1)
-        if  self.affine:
+        if self.affine:
             in_w = self.weight * (1 - self.gate)
         else:
             in_w = 1 - self.gate
@@ -274,25 +286,25 @@ class _BatchInstanceNorm(_BatchNorm):
         return out_bn + out_in
 
 
-
 class BatchInstanceNorm1d(_BatchInstanceNorm):
     def _check_input_dim(self, input):
         if input.dim() != 2 and input.dim() != 3:
-            raise ValueError('expected 2D or 3D input (got {}D input)'.format(input.dim()))
+            raise ValueError(
+                'expected 2D or 3D input (got {}D input)'.format(input.dim()))
 
 
 class BatchInstanceNorm2d(_BatchInstanceNorm):
     def _check_input_dim(self, input):
         if input.dim() != 4:
-            raise ValueError('expected 4D input (got {}D input)'.format(input.dim()))
+            raise ValueError(
+                'expected 4D input (got {}D input)'.format(input.dim()))
 
 
 class BatchInstanceNorm3d(_BatchInstanceNorm):
     def _check_input_dim(self, input):
         if input.dim() != 5:
-            raise ValueError('expected 5D input (got {}D input)'.format(input.dim()))
-
-
+            raise ValueError(
+                'expected 5D input (got {}D input)'.format(input.dim()))
 
 
 def spatial_pyramid_pool(previous_conv, batch_size, previous_conv_size, out_bin_sizes):
@@ -306,7 +318,7 @@ def spatial_pyramid_pool(previous_conv, batch_size, previous_conv_size, out_bin_
     '''
     # print(previous_conv.size())
     for i in range(0, len(out_bin_sizes)):
-        print(previous_conv_size)
+        # print(previous_conv_size)
         #assert  previous_conv_size[0] % out_bin_sizes[i]==0, 'please make sure feature size can be devided by bins'
         h_wid = int(math.ceil(previous_conv_size[0] / out_bin_sizes[i]))
         w_wid = int(math.ceil(previous_conv_size[1] / out_bin_sizes[i]))
@@ -314,7 +326,8 @@ def spatial_pyramid_pool(previous_conv, batch_size, previous_conv_size, out_bin_
         # w_stride = int(math.floor(previous_conv_size[1] / out_bin_sizes[i]))
         h_pad = (h_wid * out_bin_sizes[i] - previous_conv_size[0] + 1) // 2
         w_pad = (w_wid * out_bin_sizes[i] - previous_conv_size[1] + 1) // 2
-        maxpool = nn.MaxPool2d(kernel_size=(h_wid, w_wid), stride=(h_wid, w_wid),padding=(h_pad,w_pad))
+        maxpool = nn.MaxPool2d(kernel_size=(h_wid, w_wid), stride=(
+            h_wid, w_wid), padding=(h_pad, w_pad))
         x = maxpool(previous_conv)
         if (i == 0):
             spp = x.view(batch_size, -1)

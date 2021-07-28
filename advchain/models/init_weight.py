@@ -1,9 +1,10 @@
 from torch.nn import init
-import torch
 import torch.nn as nn
+
+
 def weights_init_normal(m):
     classname = m.__class__.__name__
-    #print(classname)
+    # print(classname)
     if isinstance(m, nn.Conv2d):
         init.normal_(m.weight.data, 0.0, 0.02)
     elif isinstance(m, nn.Linear):
@@ -15,7 +16,7 @@ def weights_init_normal(m):
 
 def weights_init_xavier(m):
     classname = m.__class__.__name__
-    #print(classname)
+    # print(classname)
     if isinstance(m, nn.Conv2d):
         init.xavier_normal_(m.weight.data, gain=1)
     elif isinstance(m, nn.Linear):
@@ -27,7 +28,7 @@ def weights_init_xavier(m):
 
 def weights_init_kaiming(m):
     classname = m.__class__.__name__
-    #print(classname)
+    # print(classname)
     if isinstance(m, nn.Conv2d):
         init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
     elif isinstance(m, nn.Linear):
@@ -57,7 +58,8 @@ def init_weights(net, init_type='normal'):
         net.apply(weights_init_xavier)
     elif init_type == 'kaiming':
         net.apply(weights_init_kaiming)
-    elif init_type == 'orthogonal':
-        net.apply(weights_init_orthogonal)
+    # elif init_type == 'orthogonal':
+    #     net.apply(weights_init_orthogonal)
     else:
-        raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
+        raise NotImplementedError(
+            'initialization method [%s] is not implemented' % init_type)

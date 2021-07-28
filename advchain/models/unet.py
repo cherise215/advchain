@@ -211,7 +211,7 @@ class UNet(nn.Module):
                             param = param.view(-1, 1)
                             param.squeeze()
                             cnt += len(param.data)
-        print(cnt)
+        return cnt
 
 
 class DeeplySupervisedUNet(nn.Module):
@@ -341,7 +341,7 @@ class DeeplySupervisedUNet(nn.Module):
                             param = param.view(-1, 1)
                             param.squeeze()
                             cnt += len(param.data)
-        print(cnt)
+        return cnt
 
 
 class UNetv2(nn.Module):

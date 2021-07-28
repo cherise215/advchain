@@ -1,7 +1,9 @@
-
+import logging
 import torch
-
 from advchain.augmentor.adv_transformation_base import AdvTransformBase
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class AdvNoise(AdvTransformBase):
@@ -47,10 +49,10 @@ class AdvNoise(AdvTransformBase):
         if step_size is None:
             step_size = self.step_size
         if self.debug:
-            print('optimize noise')
+            logging.info('optimize noise')
         grad = self.unit_normalize(self.param.grad)
         if self.debug:
-            print('grad', grad.size())
+            logging.info('grad', grad.size())
         if self.power_iteration:
             self.param = grad.detach()
         else:
@@ -83,7 +85,8 @@ class AdvNoise(AdvTransformBase):
 
     def backward(self, data):
         if self.debug:
-            print('noise back, no action:, maxium noise', torch.max(self.diff))
+            logging.info('noise back, no action:, maxium noise',
+                         torch.max(self.diff))
         return data
 
     def predict_forward(self, data):
