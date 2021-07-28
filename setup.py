@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="advchain",
-    version="0.15",
+    version="0.16",
     author="Chen (Cherise) Chen",
     author_email="work.cherise@gmail.com",
     description="adversarial data augmentation with chained  transformations",
