@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 
-from augmentor.adv_transformation_base import AdvTransformBase
+from advchain.augmentor.adv_transformation_base import AdvTransformBase
 
 
 def bspline_kernel_2d(sigma=[1, 1], order=3, asTensor=False, dtype=torch.float32, device='gpu'):
@@ -310,6 +310,11 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
+    from os.path import join as join
+
+    from advchain.common.utils import check_dir
+    dir_path = './log'
+    check_dir(dir_path, create=True)
     images = torch.ones(2, 1, 128, 128).cuda()
     images[:, :, ::2, ::2] = 2.0
     images[:, :, ::3, ::3] = 3.0
@@ -342,4 +347,4 @@ if __name__ == "__main__":
 
     plt.subplot(133)
     plt.imshow((transformed/images).detach().cpu().numpy()[0, 0])
-    plt.savefig('./result/test_bias.png')
+    plt.savefig(join(dir_path, 'test_bias.png'))

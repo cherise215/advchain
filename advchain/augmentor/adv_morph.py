@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-from augmentor.adv_transformation_base import AdvTransformBase
+from advchain.augmentor.adv_transformation_base import AdvTransformBase
 
 
 def get_base_grid(batch_size, image_height, image_width, use_gpu=True):
@@ -419,6 +419,10 @@ class AdvMorph(AdvTransformBase):
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
+    from os.path import join as join
+    from advchain.common.utils import check_dir
+    dir_path = './log'
+    check_dir(dir_path, create=True)
     images = torch.zeros((10, 1, 128, 128)).float().cuda()
     images[:, :, ::8, :] = 0.5
     images[:, :, :, ::8] = 0.5
@@ -442,9 +446,9 @@ if __name__ == "__main__":
     plt.imshow(images.cpu().numpy()[0, 0])
 
     plt.subplot(132)
-
     plt.imshow(transformed.cpu().numpy()[0, 0])
 
     plt.subplot(133)
     plt.imshow(recovered.cpu().numpy()[0, 0])
-    plt.savefig('./result/test_morph_adv.png')
+
+    plt.savefig(join(dir_path, 'test_morph.png'))

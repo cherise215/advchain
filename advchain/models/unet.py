@@ -3,14 +3,14 @@
 # Enter scenario name here
 # Enter steps here
 
-from models.unet_parts import *
 import math
 import torch.nn as nn
 from torch.autograd import Variable
 import numpy as np
 
-from models.custom_layers import BatchInstanceNorm2d
-from models.custom_layers import Self_Attn
+from advchain.models.custom_layers import BatchInstanceNorm2d
+from advchain.models.custom_layers import Self_Attn
+from advchain.models.unet_parts import *
 
 
 class UNet(nn.Module):

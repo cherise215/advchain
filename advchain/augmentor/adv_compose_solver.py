@@ -1,8 +1,8 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
-from common.loss import calc_segmentation_consistency
-from common.utils import _disable_tracking_bn_stats, set_grad
+from advchain.common.loss import calc_segmentation_consistency
+from advchain.common.utils import _disable_tracking_bn_stats, set_grad
 
 
 class ComposeAdversarialTransformSolver(object):
@@ -425,160 +425,151 @@ class ComposeAdversarialTransformSolver(object):
         return new_data
 
 
-if __name__ == "__main__":
-    import os
-    import torch
-    import torch.nn as nn
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    from skimage import data
-    import SimpleITK as sitk
-    import numpy as np
-    from utils import check_dir
+# if __name__ == "__main__":
+#     import os
+#     import torch
+#     import torch.nn as nn
+#     import matplotlib.pyplot as plt
+#     import seaborn as sns
+#     from skimage import data
+#     import SimpleITK as sitk
+#     import numpy as np
+#     from os.path import join as join
 
-    log_dir = "./result/log/debug/"
-    check_dir(log_dir, create=True)
-    # from models.image_transformer.adv_affine import AdvAffine
-    # from models.image_transformer.adv_noise import AdvNoise
-    # from models.image_transformer.adv_morph import AdvMorph
-    from adv_bias import AdvBias
-    # from models.model_util import get_unet_model
+#     from advchain.common.utils import check_dir, load_image_label
+#     from advchain.augmentor import *
 
-    sns.set(font_scale=1)
+#     log_dir = "./log"
+#     check_dir(log_dir, create=True)
 
-    # 1. set up image tensor
-    image_size = (1, 1, 128, 128)
-    # test random aug
-    images = torch.randn(image_size).cuda()
-    print('input:', images)
+#     sns.set(font_scale=1)
 
-    sample_image_path = './data/img.nrrd'
-    sample_image = sitk.GetArrayFromImage(sitk.ReadImage(sample_image_path))[
-        np.newaxis, :, :, :][:, [6], :, :]
-    sample_image = (sample_image-sample_image.min()) / \
-        (sample_image.max()-sample_image.min())
-    sample_image_tensor = torch.from_numpy(sample_image).float()
-    images[:, [0]] = sample_image_tensor.cuda()
-    images = images.cuda()
-    images.requires_grad = False
-    print('input', images)
-    # 2. set up data augmentation and its optimizer
-    augmentor_bias = AdvBias(
-        config_dict={'epsilon': 0.3,
-                     'control_point_spacing': [32, 32],
-                     'downscale': 2,
-                     'data_size': image_size,
-                     'interpolation_order': 3,
-                     'init_mode': 'random',
-                     'space': 'log'}, debug=True)
+#     image_path = './example/data/cardiac/img.nrrd'
+#     label_path = './example/data/cardiac/seg.nrrd'
+#     slice_id = 5
+#     crop_size = [192, 192]
+#     cropped_image, cropped_label = load_image_label(
+#         image_path, label_path, slice_id=slice_id, crop_size=crop_size)
+#     images = torch.from_numpy(
+#         cropped_image[np.newaxis, np.newaxis, :, :]).float()
+#     images.cuda()
+#     images.requires_grad = False
+#     print('input', images)
+#     # 2. set up data augmentation and its optimizer
+#     augmentor_bias = AdvBias(
+#         config_dict={'epsilon': 0.3,
+#                      'control_point_spacing': [*images.size()//4, *images.size()//4],
+#                      'downscale': 2,
+#                      'data_size': [*images.size()],
+#                      'interpolation_order': 3,
+#                      'init_mode': 'random',
+#                      'space': 'log'}, debug=True)
 
-    chain_of_transforms = [augmentor_bias]
+#     chain_of_transforms = [augmentor_bias]
 
-    # optimizer
-    power_iteration = False
-    n_iter = 1
-    composed_augmentor = ComposeAdversarialTransformSolver(
-        chain_of_transforms=chain_of_transforms,
-        divergence_types=['kl', 'contour'],
-        divergence_weights=[1.0, 0.5],
-        use_gpu=True,
-        debug=True,
-    )
+#     # optimizer
+#     power_iteration = False
+#     n_iter = 1
+#     composed_augmentor = ComposeAdversarialTransformSolver(
+#         chain_of_transforms=chain_of_transforms,
+#         divergence_types=['kl', 'contour'],
+#         divergence_weights=[1.0, 0.5],
+#         use_gpu=True,
+#         debug=True,
+#     )
 
-    # 3. set up  the segmentor
-    model = torch.nn.Conv2d(1, 4, 3, 1, 1)
-    # model = get_unet_model(num_classes=4,model_path='./result/UNet_16$SAX$_Segmentation.pth',model_arch='UNet_16')
-    model.cuda()
+#     # 3. set up  the segmentor
+#     model = torch.nn.Conv2d(1, 4, 3, 1, 1)
+#     # model = get_unet_model(num_classes=4,model_path='./result/UNet_16$SAX$_Segmentation.pth',model_arch='UNet_16')
+#     model.cuda()
 
-    # 4. start learning
-    composed_augmentor.init_random_transformation()
+#     # 4. start learning
+#     composed_augmentor.init_random_transformation()
 
-    # 4.1 get randomly augmented results for reference
-    rand_transformed_image = composed_augmentor.forward(images)
-    rand_predict = model.forward(rand_transformed_image)
-    # rand_predict = F.softmax(rand_predict,dim=1)
-    model.zero_grad()
-    rand_recovered_predict = composed_augmentor.predict_backward(rand_predict)
-    rand_recovered_image = composed_augmentor.backward(rand_transformed_image)
-    diff = rand_recovered_image-images
+#     # 4.1 get randomly augmented results for reference
+#     rand_transformed_image = composed_augmentor.forward(images)
+#     rand_predict = model.forward(rand_transformed_image)
+#     # rand_predict = F.softmax(rand_predict,dim=1)
+#     model.zero_grad()
+#     rand_recovered_predict = composed_augmentor.predict_backward(rand_predict)
+#     rand_recovered_image = composed_augmentor.backward(rand_transformed_image)
+#     diff = rand_recovered_image-images
 
-    print('sum image diff', torch.sum(diff))
+#     print('sum image diff', torch.sum(diff))
 
-    # 4.2 adv data augmentation
-    loss = composed_augmentor.adversarial_training(
-        data=images, model=model,
-        n_iter=n_iter, lazy_load=True, optimization_mode='chain',
-        optimize_flags=[True]*len(chain_of_transforms),
-        power_iteration=[power_iteration]*len(chain_of_transforms))
-    print('consistency loss', loss.item())
+#     # 4.2 adv data augmentation
+#     loss = composed_augmentor.adversarial_training(
+#         data=images, model=model,
+#         n_iter=n_iter, lazy_load=True, optimization_mode='chain',
+#         optimize_flags=[True]*len(chain_of_transforms),
+#         power_iteration=[power_iteration]*len(chain_of_transforms))
+#     print('consistency loss', loss.item())
 
-    warped_back_adv_image = composed_augmentor.backward(
-        composed_augmentor.adv_data)
-    adv_predict = composed_augmentor.adv_predict
-    adv_recovered_predict = composed_augmentor.warped_back_adv_output
-    init_output = composed_augmentor.init_output
+#     warped_back_adv_image = composed_augmentor.backward(
+#         composed_augmentor.adv_data)
+#     adv_predict = composed_augmentor.adv_predict
+#     adv_recovered_predict = composed_augmentor.warped_back_adv_output
+#     init_output = composed_augmentor.init_output
 
-    fig, axes = plt.subplots(2, 8)
+#     fig, axes = plt.subplots(2, 8)
 
-    axes[0, 0].imshow(images.detach().cpu().numpy()[0, 0],
-                      cmap='gray', interpolation=None)
-    axes[0, 0].set_title('Input')
+#     axes[0, 0].imshow(images.detach().cpu().numpy()[0, 0],
+#                       cmap='gray', interpolation=None)
+#     axes[0, 0].set_title('Input')
 
-    axes[0, 1].imshow(composed_augmentor.adv_data.detach().cpu().numpy()[
-                      0, 0], cmap='gray', interpolation=None)
-    axes[0, 1].set_title('Transformed')
+#     axes[0, 1].imshow(composed_augmentor.adv_data.detach().cpu().numpy()[
+#                       0, 0], cmap='gray', interpolation=None)
+#     axes[0, 1].set_title('Transformed')
 
-    axes[0, 2].imshow(warped_back_adv_image.detach().cpu().numpy()[
-                      0, 0], cmap='gray', interpolation=None)
-    axes[0, 2].set_title('Recovered')
+#     axes[0, 2].imshow(warped_back_adv_image.detach().cpu().numpy()[
+#                       0, 0], cmap='gray', interpolation=None)
+#     axes[0, 2].set_title('Recovered')
 
-    axes[0, 3].imshow(torch.argmax(adv_predict, dim=1).unsqueeze(
-        1).detach().cpu().numpy()[0, 0], cmap='gray', interpolation=None)
-    axes[0, 3].set_title('Adv Predict')
+#     axes[0, 3].imshow(torch.argmax(adv_predict, dim=1).unsqueeze(
+#         1).detach().cpu().numpy()[0, 0], cmap='gray', interpolation=None)
+#     axes[0, 3].set_title('Adv Predict')
 
-    axes[0, 4].imshow(torch.argmax(adv_recovered_predict, dim=1).unsqueeze(
-        1).detach().cpu().numpy()[0, 0], cmap='gray', interpolation=None)
-    axes[0, 4].set_title('Recovered')
+#     axes[0, 4].imshow(torch.argmax(adv_recovered_predict, dim=1).unsqueeze(
+#         1).detach().cpu().numpy()[0, 0], cmap='gray', interpolation=None)
+#     axes[0, 4].set_title('Recovered')
 
-    axes[0, 5].imshow(torch.argmax(init_output, dim=1).unsqueeze(
-        1).detach().cpu().numpy()[0, 0], cmap='gray', interpolation=None)
-    axes[0, 5].set_title('Original')
+#     axes[0, 5].imshow(torch.argmax(init_output, dim=1).unsqueeze(
+#         1).detach().cpu().numpy()[0, 0], cmap='gray', interpolation=None)
+#     axes[0, 5].set_title('Original')
 
-    axes[0, 6].imshow((composed_augmentor.adv_data-images).detach().cpu().numpy()
-                      [0, 0], cmap='gray', interpolation=None)
-    axes[0, 6].set_title('diff')
+#     axes[0, 6].imshow((composed_augmentor.adv_data-images).detach().cpu().numpy()
+#                       [0, 0], cmap='gray', interpolation=None)
+#     axes[0, 6].set_title('diff')
 
-    axes[1, 0].imshow(images.detach().cpu().numpy()[0, 0],
-                      cmap='gray', interpolation=None)
-    axes[1, 0].set_title('Input')
+#     axes[1, 0].imshow(images.detach().cpu().numpy()[0, 0],
+#                       cmap='gray', interpolation=None)
+#     axes[1, 0].set_title('Input')
 
-    axes[1, 1].imshow(rand_transformed_image.detach().cpu().numpy()[
-                      0, 0], cmap='gray', interpolation=None)
-    axes[1, 1].set_title('Rand ')
+#     axes[1, 1].imshow(rand_transformed_image.detach().cpu().numpy()[
+#                       0, 0], cmap='gray', interpolation=None)
+#     axes[1, 1].set_title('Rand ')
 
-    axes[1, 2].imshow(rand_recovered_image.detach().cpu().numpy()[
-                      0, 0], cmap='gray', interpolation=None)
-    axes[1, 2].set_title('Rand')
+#     axes[1, 2].imshow(rand_recovered_image.detach().cpu().numpy()[
+#                       0, 0], cmap='gray', interpolation=None)
+#     axes[1, 2].set_title('Rand')
 
-    axes[1, 3].imshow(torch.argmax(rand_predict, dim=1).detach().cpu().numpy()[
-                      0], cmap='gray', interpolation=None)
-    axes[1, 3].set_title('Predict')
-    axes[1, 4].imshow(torch.argmax(rand_recovered_predict, dim=1).detach(
-    ).cpu().numpy()[0], cmap='gray', interpolation=None)
-    axes[1, 4].set_title('Recovered')
-    axes[1, 5].imshow(torch.argmax(init_output, dim=1).detach().cpu().numpy()[
-                      0], cmap='gray', interpolation=None)
-    axes[1, 5].set_title('Original')
+#     axes[1, 3].imshow(torch.argmax(rand_predict, dim=1).detach().cpu().numpy()[
+#                       0], cmap='gray', interpolation=None)
+#     axes[1, 3].set_title('Predict')
+#     axes[1, 4].imshow(torch.argmax(rand_recovered_predict, dim=1).detach(
+#     ).cpu().numpy()[0], cmap='gray', interpolation=None)
+#     axes[1, 4].set_title('Recovered')
+#     axes[1, 5].imshow(torch.argmax(init_output, dim=1).detach().cpu().numpy()[
+#                       0], cmap='gray', interpolation=None)
+#     axes[1, 5].set_title('Original')
 
-    axes[1, 6].imshow((rand_transformed_image-images).detach().cpu().numpy()
-                      [0, 0], cmap='gray', interpolation=None)
+#     axes[1, 6].imshow((rand_transformed_image-images).detach().cpu().numpy()
+#                       [0, 0], cmap='gray', interpolation=None)
 
-    for ax in axes.ravel():
-        ax.set_axis_off()
-        ax.grid(False)
-    plt.tight_layout(w_pad=0, h_pad=0)
-    save_dir = './result'
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    plt.savefig(os.path.join(save_dir, 'test_compose.png'))
-    plt.clf()
+#     for ax in axes.ravel():
+#         ax.set_axis_off()
+#         ax.grid(False)
+#     plt.tight_layout(w_pad=0, h_pad=0)
+
+#     plt.savefig(join(dir_path, 'test_compose.png'))
+#     plt.clf()

@@ -5,7 +5,23 @@ import numpy as np
 import SimpleITK as sitk
 import random
 
-from models.unet import UNet
+from advchain.models.unet import UNet
+
+
+def check_dir(dir_path, create=False):
+    '''
+    check the existence of a dir, when create is True, will create the dir if it does not exist.
+    dir_path: str.
+    create: bool
+    return:
+    exists (1) or not (-1)
+    '''
+    if os.path.exists(dir_path):
+        return 1
+    else:
+        if create:
+            os.makedirs(dir_path)
+        return -1
 
 
 def load_image_label(image_path, label_path, slice_id=0, crop_size=(192, 192)):

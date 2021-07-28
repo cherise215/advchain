@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 import math
 import matplotlib.pyplot as plt
-from augmentor.adv_transformation_base import AdvTransformBase
+from advchain.augmentor.adv_transformation_base import AdvTransformBase
 
 
 class AdvAffine(AdvTransformBase):
@@ -24,7 +24,7 @@ class AdvAffine(AdvTransformBase):
                      'backward_interp': 'bilinear'
                  },
                  power_iteration=False,
-                 use_gpu = True, debug = False):
+                 use_gpu=True, debug=False):
         '''
         initialization
         '''
@@ -194,6 +194,11 @@ class AdvAffine(AdvTransformBase):
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
+    from os.path import join as join
+    from advchain.common.utils import check_dir
+
+    dir_path = './log'
+    check_dir(dir_path, create=True)
     images = torch.zeros((1, 1, 8, 8)).cuda()
     images[:, :, 2:5, 2:5] = 1.0
     print('input:', images)
@@ -221,6 +226,6 @@ if __name__ == "__main__":
 
     # plt.subplot(144)
     # plt.imshow(mask.cpu().numpy()[0,0])
-    plt.savefig('./result/test_affine_adv.png')
+    plt.savefig(join(dir_path, 'test_affine.png'))
 
     # adv test

@@ -1,7 +1,7 @@
 
 import torch
 
-from augmentor.adv_transformation_base import AdvTransformBase
+from advchain.augmentor.adv_transformation_base import AdvTransformBase
 
 
 class AdvNoise(AdvTransformBase):
@@ -104,6 +104,12 @@ class AdvNoise(AdvTransformBase):
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
+    from os.path import join as join
+
+    from advchain.common.utils import check_dir
+
+    dir_path = './log'
+    check_dir(dir_path, create=True)
     images = torch.zeros((10, 1, 8, 8)).cuda()
     print('input:', images)
     augmentor = AdvNoise(debug=True)
@@ -112,3 +118,13 @@ if __name__ == "__main__":
     recovered = augmentor.backward(transformed)
     error = recovered-images
     print('sum error', torch.sum(error))
+    plt.subplot(131)
+    plt.imshow(images.cpu().numpy()[0, 0])
+
+    plt.subplot(132)
+    plt.imshow(transformed.cpu().numpy()[0, 0])
+
+    plt.subplot(133)
+    plt.imshow(recovered.cpu().numpy()[0, 0])
+
+    plt.savefig(join(dir_path, 'test_noise.png'))
