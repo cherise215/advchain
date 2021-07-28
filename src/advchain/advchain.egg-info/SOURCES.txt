@@ -1,6 +1,5 @@
 LICENSE
 README.md
-pyproject.toml
 setup.cfg
 setup.py
 advchain/advchain.egg-info/PKG-INFO

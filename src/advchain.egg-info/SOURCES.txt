@@ -1,0 +1,8 @@
+LICENSE
+README.md
+setup.cfg
+setup.py
+src/advchain.egg-info/PKG-INFO
+src/advchain.egg-info/SOURCES.txt
+src/advchain.egg-info/dependency_links.txt
+src/advchain.egg-info/top_level.txt

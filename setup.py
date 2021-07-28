@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="advchain",
-    version="0.16",
+    version="0.18",
     author="Chen (Cherise) Chen",
     author_email="work.cherise@gmail.com",
     description="adversarial data augmentation with chained  transformations",
@@ -20,7 +20,7 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    package_dir={"": "advchain"},
-    packages=setuptools.find_packages(where="advchain"),
+    package_dir={"": "src"},
+    packages=setuptools.find_packages(where="src"),
     python_requires=">=3.6",
 )
