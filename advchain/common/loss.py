@@ -13,15 +13,19 @@ def calc_segmentation_consistency(output, reference, divergence_types=['kl', 'co
     Args:
         output (torch tensor 4d): network predicts: NCHW (after perturbation)
         reference (torch tensor 4d): network references: NCHW (before perturbation)
-        divergence_types (list, string): specify loss types. Defaults to ['kl','contour'].
-        divergence_weights (list, float): specify coefficients for each loss above. Defaults to [1.0,0.5].
-        scales (list of int): specify a list of downsampling rates so that losses will be calculated on different scales. Defaults to [0].
-        mask ([tensor], 0-1 onehotmap): [N*1*H*W]. No losses on the elements with mask=0. Defaults to None.
+        divergence_types (list, string): specifying loss types. Defaults to ['kl','contour'].
+        divergence_weights (list, float): specifying coefficients for each loss above. Defaults to [1.0,0.5].
+        class_weights (list of scalars):  specifying class weights for loss computation
+        scales (list of int): specifying a list of downsampling rates so that losses will be calculated on different scales. Defaults to [0].
+        mask ([tensor], 0-1 onehotmap): [N*1*H*W]. disable  loss computation on corresponding elements with mask=0. Defaults to None.
+        is_gt: bool, if true, will use one-hot encoded `reference' instead of probabilities maps after appying softmax to compute the consistency loss
     Raises:
         NotImplementedError: when loss name is not in ['kl','mse','contour']
     Returns:
         loss (tensor float): 
     """
+    if class_weights is not None:
+        raise NotImplemented
     dist = 0.
     num_classes = reference.size(1)
     if mask is None:

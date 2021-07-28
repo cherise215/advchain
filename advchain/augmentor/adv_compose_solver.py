@@ -15,10 +15,10 @@ class ComposeAdversarialTransformSolver(object):
                  debug=False,
                  if_norm_image=False,
                  is_gt=False,
-                 class_weights=None
                  ):
         '''
         adversarial data augmentation solver
+        #TODO: implement class-aware consistency loss for segmentation tasks.
         '''
         self.chain_of_transforms = chain_of_transforms
         self.use_gpu = use_gpu
@@ -28,7 +28,7 @@ class ComposeAdversarialTransformSolver(object):
         self.require_bi_loss = self.if_contains_geo_transform()
         self.if_norm_image = if_norm_image
         self.is_gt = is_gt
-        self.class_weights = class_weights
+        self.class_weights = None
 
     def adversarial_training(self, data, model, init_output=None, lazy_load=False, n_iter=1,
                              optimize_flags=None,
