@@ -139,7 +139,8 @@ class AdvBias(AdvTransformBase):
         :return:
         tensor: transformed images
         '''
-        assert self.param is not None, 'init param before transform data'
+        if self.param is None:
+            self.init_parameters()
         if self.power_iteration and self.is_training:
             bias_field = self.compute_smoothed_bias(self.xi*self.param)
         else:

@@ -70,6 +70,8 @@ class AdvAffine(AdvTransformBase):
         '''
 
         assert self.param is not None, 'init param before transform data'
+        if self.param is None:
+            self.init_parameters()
         if interp is None:
             interp = self.forward_interp
         if self.power_iteration and self.is_training:
