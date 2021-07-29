@@ -70,6 +70,8 @@ class AdvNoise(AdvTransformBase):
         :return:
         tensor: transformed images
         '''
+        if self.debug:
+            print('add noise')
         if self.param is None:
             self.init_parameters()
         if self.power_iteration and self.is_training:
@@ -79,8 +81,6 @@ class AdvNoise(AdvTransformBase):
 
         self.diff = transformed_input - data
 
-        if self.debug:
-            print('add noise')
         return transformed_input
 
     def backward(self, data):
