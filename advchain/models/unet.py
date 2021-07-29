@@ -11,6 +11,29 @@ import numpy as np
 from advchain.models.custom_layers import BatchInstanceNorm2d
 from advchain.models.custom_layers import Self_Attn
 from advchain.models.unet_parts import *
+from advchain.common.utils import check_dir
+
+
+def get_unet_model(model_path, num_classes=2, device=None, model_arch='UNet_16'):
+    '''
+    init model and load the trained parameters from the disk.
+    model path: string. path to the model checkpoint
+    device: torch device
+    return pytorch nn.module model
+    '''
+    assert check_dir(model_path) == 1, model_path+' does not exists'
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    if model_arch == 'UNet_16':
+        model = UNet(input_channel=1, num_classes=num_classes, feature_scale=4)
+    elif model_arch == 'UNet_64':
+        model = UNet(input_channel=1, num_classes=num_classes, feature_scale=1)
+    else:
+        raise NotImplementedError
+    model.load_state_dict(torch.load(model_path))
+    model = model.to(device)
+    return model
 
 
 class UNet(nn.Module):

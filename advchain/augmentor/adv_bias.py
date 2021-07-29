@@ -41,7 +41,7 @@ class AdvBias(AdvTransformBase):
                  config_dict={
                      'epsilon': 0.3,  # magnitude, (0,1)
                      # spacings between two control points along the x- and y- direction.
-                     'control_point_spacing': [32, 32],
+                     'control_point_spacing': [64, 64],
                      # downscale images to speed up the computation.
                      'downscale': 2,
                      # [ns,ch,h,w], change it to your tensor size
@@ -72,8 +72,14 @@ class AdvBias(AdvTransformBase):
         self.epsilon = config_dict['epsilon']
         self.xi = 1e-6
         self.data_size = config_dict['data_size']
-        self.control_point_spacing = config_dict['control_point_spacing']
         self.downscale = config_dict['downscale']
+        assert self.downscale <= min(
+            self.data_size[2:]), 'downscale factor is too  large'
+        self.control_point_spacing = [
+            i//self.downscale for i in config_dict['control_point_spacing']]
+        if (sum(self.control_point_spacing) > sum([40]*len(self.control_point_spacing))):
+            logging.warning(
+                'control point spacing may be too large, please increase the downscale factor.')
         self.interpolation_order = config_dict['interpolation_order']
 
         self.space = config_dict['space']
@@ -148,12 +154,12 @@ class AdvBias(AdvTransformBase):
 
         transformed_input = bias_field*data
         if self.debug:
-            logging.info('bias transformed', transformed_input.size())
+            print('bias transformed', transformed_input.size())
         return transformed_input
 
     def backward(self, data):
         if self.debug:
-            logging.info('max magnitude', torch.max(
+            print('max magnitude', torch.max(
                 torch.abs(self.bias_field-1)))
         return data
 
@@ -170,7 +176,7 @@ class AdvBias(AdvTransformBase):
         :param spacing: tuple of ints
         :param order:
         :return:bias field
-        reference: 
+        reference:
         bspline interpoplation is adapted from airlab: class _KernelTransformation(_Transformation):
 https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa2241d/airlab/transformation/pairwise.py
         '''
@@ -228,7 +234,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         self.bias_field = self.compute_smoothed_bias(
             self.param, padding=self._padding, stride=self._stride)
         if self.debug:
-            logging.info('initialize {} control points'.format(
+            print('initialize {} control points'.format(
                 str(self.param.size())))
 
         return self.param, self.interp_kernel, self.bias_field
@@ -288,7 +294,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         bias = bias_field-1
         bias_field = 1+torch.clamp(bias, -magnitude, magnitude)
         if self.debug:
-            logger.info('max |bias-id|', torch.max(torch.abs(bias_field-1)))
+            print('max |bias-id|', torch.max(torch.abs(bias_field-1)))
         return bias_field
 
     def get_bspline_kernel(self, spacing, order=3):

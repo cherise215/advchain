@@ -8,8 +8,6 @@ import SimpleITK as sitk
 import random
 from pathlib import Path
 
-from advchain.models.unet import UNet
-
 
 def check_dir(dir_path, create=False):
     '''
@@ -44,7 +42,7 @@ def load_image_label(image_path, label_path=None, slice_id=0, crop_size=(192, 19
         str(support_formats))
 
     image = sitk.GetArrayFromImage(sitk.ReadImage(image_path))[slice_id]
-    logging.info('image size:', image.shape)
+    # print('image size:', image.shape)
 
     h_diff = (image.shape[0]-crop_size[0])//2
     w_diff = (image.shape[1]-crop_size[1])//2
@@ -57,7 +55,7 @@ def load_image_label(image_path, label_path=None, slice_id=0, crop_size=(192, 19
 
     if label_path is not None:
         label = sitk.GetArrayFromImage(sitk.ReadImage(label_path))[slice_id]
-        logging.info('label size:', label.shape)
+        # logging.info('label size:', label.shape)
         assert image.shape == label.shape, "The sizes of the input image and label do not match, image:{}label:{}".format(
             str(image.shape), str(label.shape))
         cropped_label = label[h_diff:crop_size[0] +
@@ -133,28 +131,6 @@ def _disable_tracking_bn_stats(model):
 def set_grad(module, requires_grad=False):
     for p in module.parameters():  # reset requires_grad
         p.requires_grad = requires_grad
-
-
-def get_unet_model(model_path, num_classes=2, device=None, model_arch='UNet_16'):
-    '''
-    init model and load the trained parameters from the disk.
-    model path: string. path to the model checkpoint
-    device: torch device
-    return pytorch nn.module model
-    '''
-    assert check_dir(model_path) == 1, model_path+' does not exists'
-    if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    if model_arch == 'UNet_16':
-        model = UNet(input_channel=1, num_classes=num_classes, feature_scale=4)
-    elif model_arch == 'UNet_64':
-        model = UNet(input_channel=1, num_classes=num_classes, feature_scale=1)
-    else:
-        raise NotImplementedError
-    model.load_state_dict(torch.load(model_path))
-    model = model.to(device)
-    return model
 
 
 def random_chain(alist, *args):

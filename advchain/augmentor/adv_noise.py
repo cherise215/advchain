@@ -52,7 +52,7 @@ class AdvNoise(AdvTransformBase):
             logging.info('optimize noise')
         grad = self.unit_normalize(self.param.grad)
         if self.debug:
-            logging.info('grad', grad.size())
+            print('grad', grad.size())
         if self.power_iteration:
             self.param = grad.detach()
         else:
@@ -85,8 +85,8 @@ class AdvNoise(AdvTransformBase):
 
     def backward(self, data):
         if self.debug:
-            logging.info('noise back, no action:, maxium noise',
-                         torch.max(self.diff))
+            print('noise back, no action:, maxium noise',
+                  torch.max(self.diff))
         return data
 
     def predict_forward(self, data):

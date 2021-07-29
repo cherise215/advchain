@@ -248,7 +248,7 @@ class AdvMorph(AdvTransformBase):
         transformed_image = self.transform(
             data, dxy, mode=self.interpolator_mode)
         if self.debug:
-            logging.info('warp back:', data.size())
+            logging.info('warp back.')
         return transformed_image
 
     def predict_forward(self, data):
