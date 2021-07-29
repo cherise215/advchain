@@ -69,7 +69,6 @@ class AdvAffine(AdvTransformBase):
         tensor: transformed images
         '''
 
-        assert self.param is not None, 'init param before transform data'
         if self.param is None:
             self.init_parameters()
         if interp is None:
