@@ -150,7 +150,7 @@ def random_chain(alist, *args):
 
             return results
         else:
-            return results
+            return results[0]
 
     sub_len = np.random.randint(low=1, high=length+1)
 
