@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-from advchain.augmentor.adv_transformation_base import AdvTransformBase
+from advchain.augmentor.adv_transformation_base import AdvTransformBase  # noqa
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

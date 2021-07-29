@@ -1,5 +1,4 @@
 
-from advchain.augmentor.adv_transformation_base import AdvTransformBase
 import matplotlib.pyplot as plt
 import math
 import torch.nn.functional as F
@@ -7,6 +6,8 @@ import torch
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+from advchain.augmentor.adv_transformation_base import AdvTransformBase  # noqa
 
 
 class AdvAffine(AdvTransformBase):

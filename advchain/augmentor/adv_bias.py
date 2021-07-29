@@ -1,4 +1,3 @@
-from advchain.augmentor.adv_transformation_base import AdvTransformBase
 import numpy as np
 import torch.nn.functional as F
 import torch
@@ -6,6 +5,7 @@ import torch
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+from advchain.augmentor.adv_transformation_base import AdvTransformBase  # noqa
 
 
 def bspline_kernel_2d(sigma=[1, 1], order=3, asTensor=False, dtype=torch.float32, device='gpu'):
