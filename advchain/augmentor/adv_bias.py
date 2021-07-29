@@ -155,7 +155,7 @@ class AdvBias(AdvTransformBase):
 
         transformed_input = bias_field*data
         if self.debug:
-            print('bias transformed', transformed_input.size())
+            print('apply bias field augmentation')
         return transformed_input
 
     def backward(self, data):
@@ -235,7 +235,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         self.bias_field = self.compute_smoothed_bias(
             self.param, padding=self._padding, stride=self._stride)
         if self.debug:
-            print('initialize {} control points'.format(
+            print('initialize control points: {}'.format(
                 str(self.param.size())))
 
         return self.param, self.interp_kernel, self.bias_field
@@ -262,7 +262,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
 
         # recover bias field to original image resolution for efficiency.
         if self.debug:
-            print('after intep, size:', bias_field_tmp.size())
+            print('[bias] after intep, size:', bias_field_tmp.size())
         scale_factor_h = self._image_size[0] / bias_field_tmp.size(2)
         scale_factor_w = self._image_size[1] / bias_field_tmp.size(3)
 
@@ -295,7 +295,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         bias = bias_field-1
         bias_field = 1+torch.clamp(bias, -magnitude, magnitude)
         if self.debug:
-            print('max |bias-id|', torch.max(torch.abs(bias_field-1)))
+            print('[bias] max |bias-id|', torch.max(torch.abs(bias_field-1)))
         return bias_field
 
     def get_bspline_kernel(self, spacing, order=3):

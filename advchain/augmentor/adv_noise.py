@@ -80,7 +80,7 @@ class AdvNoise(AdvTransformBase):
         self.diff = transformed_input - data
 
         if self.debug:
-            print('noise transformed', transformed_input.size())
+            print('add noise')
         return transformed_input
 
     def backward(self, data):

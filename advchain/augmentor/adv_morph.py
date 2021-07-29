@@ -206,6 +206,8 @@ class AdvMorph(AdvTransformBase):
         vector = self.init_velocity(
             batch_size=self.data_size[0],  height=self.vector_size[0], width=self.vector_size[1], use_zero=False)
         self.param = vector
+        if self.debug:
+            print('init velocity:', vector.size())
         return vector
 
     def forward(self, data, interpolation_mode=None):
@@ -230,7 +232,7 @@ class AdvMorph(AdvTransformBase):
         self.diff = transformed_image-data
         self.displacement = displacement
         if self.debug:
-            logging.info('morph transformed', transformed_image.size())
+            print('apply morphological transformation')
         return transformed_image
 
     def backward(self, data, interpolation_mode=None):
@@ -355,8 +357,6 @@ class AdvMorph(AdvTransformBase):
         duv = F.interpolate(duv, size=(self.base_grid_wh.size(
             2), self.base_grid_wh.size(3)), mode='bilinear', align_corners=False)
 
-        if self.debug:
-            print('velocity_size', duv.size())
         integrated_offsets = vectorFieldExponentiation2D(duv=duv, nb_steps=self.num_steps,
                                                          type=self.integration_type)
 

@@ -85,7 +85,7 @@ class AdvAffine(AdvTransformBase):
         self.diff = data-transformed_input
 
         if self.debug:
-            print('afffine transformed', transformed_input.size())
+            print('apply affine transformation')
         return transformed_input
 
     def predict_forward(self, data):

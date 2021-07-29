@@ -2,7 +2,8 @@ import logging
 import numpy as np
 import torch
 import torch.nn.functional as F
-from advchain.common.loss import calc_segmentation_consistency ##noqa
+
+from advchain.common.loss import calc_segmentation_consistency  # noqa
 from advchain.common.utils import _disable_tracking_bn_stats, set_grad
 
 
