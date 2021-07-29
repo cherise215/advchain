@@ -262,7 +262,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
 
         # recover bias field to original image resolution for efficiency.
         if self.debug:
-            logger.info('after intep, size:', bias_field_tmp.size())
+            print('after intep, size:', bias_field_tmp.size())
         scale_factor_h = self._image_size[0] / bias_field_tmp.size(2)
         scale_factor_w = self._image_size[1] / bias_field_tmp.size(3)
 
