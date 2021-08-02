@@ -108,8 +108,6 @@ class ComposeAdversarialTransformSolver(object):
             self.chain_of_transforms = optimized_transforms
         else:
             pass
-            #print ('random')
-
         # 4. augment data with optimized transformation t, and calc the adversarial consistency loss with the composite transformation
         dist, adv_data, adv_output, warped_back_adv_output = self.calc_adv_consistency_loss(
             data.detach().clone(), model, init_output=init_output, chain_of_transforms=self.chain_of_transforms)
@@ -122,67 +120,6 @@ class ComposeAdversarialTransformSolver(object):
         if self.debug:
             print('[outer loop] loss', dist.item())
         return dist
-
-    def get_adv_data(self, data, model, init_output=None, n_iter=0):
-        if init_output is None:
-            init_output = self.get_init_output(model, data)
-        self.init_random_transformation()
-        origin_data = data.detach().clone()
-        if n_iter > 0:
-            optimized_transforms = self.optimizing_transform(
-                data=data, model=model, init_output=init_output, n_iter=n_iter, optimize_flags=[True]*len(self.chain_of_transforms))
-        else:
-            optimized_transforms = self.chain_of_transforms
-        augmented_data = self.forward(origin_data, optimized_transforms)
-        augmented_label = self.predict_forward(
-            init_output, optimized_transforms)
-        return augmented_data, augmented_label
-
-    def calc_adv_consistency_loss(self, data, model, init_output, chain_of_transforms=None):
-        """[summary]  
-        calc adversarial consistency loss with adversarial data augmentation 
-
-        Args:
-            data ([torch 4d tensor]): a batch of clean images
-            model ([torch.nn.Module]):segmentation model
-            init_output ([torch 4d tensor]): predictions on clean images (before softmax)
-            chain_of_transforms ([list of adversarial image transformation], optional): [description].
-             Defaults to None. use self.chain_of_transform
-
-        Returns:
-            loss [torch.tensor]: The consistency loss  
-        """
-        if chain_of_transforms is None:
-            chain_of_transforms = self.chain_of_transforms
-        adv_data = self.forward(data, chain_of_transforms)
-        torch.cuda.empty_cache()
-        set_grad(model, requires_grad=True)
-        old_state = model.training
-        model.train()
-        with _disable_tracking_bn_stats(model):
-            adv_output = model(adv_data.detach().clone())
-
-        if self.if_contains_geo_transform(chain_of_transforms):
-            forward_reference = self.predict_forward(
-                init_output.detach(), chain_of_transforms)
-            forward_backward_reference = self.predict_backward(
-                forward_reference, chain_of_transforms)
-            masks = torch.ones_like(
-                init_output, dtype=init_output.dtype, device=init_output.device)
-            forward_backward_mask = self.predict_backward(
-                self.predict_forward(masks, chain_of_transforms), chain_of_transforms)
-            warped_back_adv_output = self.predict_backward(
-                adv_output, chain_of_transforms)
-            forward_backward_mask[forward_backward_mask != 0] = 1
-            dist = self.loss_fn(pred=warped_back_adv_output, reference=forward_backward_reference.detach(
-            ), mask=forward_backward_mask)
-        else:
-            # no geomtric transformation
-            warped_back_adv_output = adv_output
-            dist = self.loss_fn(
-                pred=adv_output, reference=init_output.detach())
-        model.train(old_state)
-        return dist, adv_data, adv_output, warped_back_adv_output
 
     def forward(self, data, chain_of_transforms=None):
         '''
@@ -219,73 +156,92 @@ class ComposeAdversarialTransformSolver(object):
         self.diffs = []
         if chain_of_transforms is None:
             chain_of_transforms = self.chain_of_transforms
-
         for transform in chain_of_transforms:
             data = transform.predict_forward(data)
             self.diffs.append(transform.diff)
         return data
 
-    def loss_fn(self, pred, reference, mask=None):
+    def backward(self, data, chain_of_transforms=None):
+        '''
+        warp it back to image space
+        only activate when the augmentation is a geometric transformation
+        '''
+        if chain_of_transforms is None:
+            chain_of_transforms = self.chain_of_transforms
+        for transform in reversed(chain_of_transforms):
+            data = transform.backward(data)
+        return data
 
+    def predict_backward(self, data, chain_of_transforms=None):
+        '''
+        warp it back to image space
+        only activate when the augmentation is a geometric transformation
+        '''
+        if chain_of_transforms is None:
+            chain_of_transforms = self.chain_of_transforms
+        for transform in reversed(chain_of_transforms):
+            data = transform.predict_backward(data)
+        return data
+
+    def loss_fn(self, pred, reference, mask=None):
+        """[compute the inconsistency between two predictions (in the same coordinates)
+
+        Args:
+            pred ([torch tensor]): 4-dim output
+            reference ([torch tensor]): 4-dim reference
+            mask ([torch tensor], optional): 4-dim mask with 0-1, indicating which element (mask=0) should be ignored when computing loss. Defaults to None.
+        Returns:
+            loss [torch tensor]: a scalar.
+        """
         scales = [0]
         loss = calc_segmentation_consistency(output=pred, reference=reference, divergence_types=self.divergence_types, divergence_weights=self.divergence_weights, scales=scales, mask=mask, class_weights=self.class_weights,
                                              is_gt=self.is_gt)
         return loss
 
-    def if_contains_geo_transform(self, chain_of_transforms=None):
-        """[summary]
-        check if the predefined transformation contains geometric transform
+    def calc_adv_consistency_loss(self, data, model, init_output, chain_of_transforms=None):
+        """[summary]  
+        calc adversarial consistency loss with adversarial data augmentation 
+
+        Args:
+            data ([torch 4d tensor]): a batch of clean images
+            model ([torch.nn.Module]):segmentation model
+            init_output ([torch 4d tensor]): predictions on clean images (before softmax)
+            chain_of_transforms ([list of adversarial image transformation], optional): [description].
+             Defaults to None. use self.chain_of_transform
+
         Returns:
-            [boolean]: return True if geometric transformation is involved, otherwise false.
+            loss [torch.tensor]: The consistency loss  
         """
         if chain_of_transforms is None:
             chain_of_transforms = self.chain_of_transforms
-        sum_flag = 0
-
-        for transform in chain_of_transforms:
-            sum_flag += transform.is_geometric()
-        return sum_flag > 0
-
-    def init_random_transformation(self, lazy_load=False):
-        # initialize transformation parameters
-        '''
-        randomly initialize random parameters
-        return 
-        list of random parameters, and list of random transform
-
-        '''
-        for transform in self.chain_of_transforms:
-            if lazy_load:
-                if transform.param is None:
-                    transform.init_parameters()
-            else:
-                transform.init_parameters()
-
-    def set_transformation(self, parameter_list):
-        """
-        set the values of transformations accordingly
-
-        Args:
-            parameter_list ([type]): [description]
-        """
-        # reset transformation parameters
-        for i, param in enumerate(parameter_list):
-            self.chain_of_transforms[i].set_parameters(param)
-
-    def make_learnable_transformation(self, optimize_flags, chain_of_transforms=None):
-        """[summary]
-        make transformation parameters learnable
-        Args:
-            power_iterations ([boolean]): [description]
-            chain_of_transforms ([list of adv transformation functions], optional): 
-            [description]. Defaults to None. if not specified, use self.transformation instead
-        """
-        # reset transformation parameters
-        if chain_of_transforms is None:
-            chain_of_transforms = self.chain_of_transforms
-        for flag, transform in zip(optimize_flags, chain_of_transforms):
-            if flag:
-                transform.train()
+        adv_data = self.forward(data, chain_of_transforms)
+        torch.cuda.empty_cache()
+        set_grad(model, requires_grad=True)
+        old_state = model.training
+        model.train()
+        with _disable_tracking_bn_stats(model):
+            adv_output = model(adv_data.detach().clone())
+        if self.if_contains_geo_transform(chain_of_transforms):
+            forward_reference = self.predict_forward(
+                init_output.detach(), chain_of_transforms)
+            forward_backward_reference = self.predict_backward(
+                forward_reference, chain_of_transforms)
+            masks = torch.ones_like(
+                init_output, dtype=init_output.dtype, device=init_output.device)
+            forward_backward_mask = self.predict_backward(
+                self.predict_forward(masks, chain_of_transforms), chain_of_transforms)
+            warped_back_adv_output = self.predict_backward(
+                adv_output, chain_of_transforms)
+            forward_backward_mask[forward_backward_mask != 0] = 1
+            dist = self.loss_fn(pred=warped_back_adv_output, reference=forward_backward_reference.detach(
+            ), mask=forward_backward_mask)
+        else:
+            # no geomtric transformation
+            warped_back_adv_output = adv_output
+            dist = self.loss_fn(
+                pred=adv_output, reference=init_output.detach())
+        model.train(old_state)
+        return dist, adv_data, adv_output, warped_back_adv_output
 
     def optimizing_transform(self, model, data, init_output, optimize_flags, n_iter=1, step_sizes=None):
         # optimize each transform with one forward pass.
@@ -340,77 +296,6 @@ class ComposeAdversarialTransformSolver(object):
             transforms.append(transform)
         return transforms
 
-    # def optimizing_transform_independent(self, data, model, init_output, optimize_flags, lazy_load=False, n_iter=1, stack=False):
-    #     new_transforms = []
-    #     for opti_flag, transform in zip(optimize_flags, self.chain_of_transforms):
-    #         torch.cuda.empty_cache()
-    #         if opti_flag:
-    #             for i in range(n_iter):
-    #                 model.zero_grad()
-    #                 torch.cuda.empty_cache()
-    #                 self.make_learnable_transformation(
-    #                     chain_of_transforms=[transform], optimize_flags=[opti_flag])
-    #                 augmented_data = transform.forward(data.detach().clone())
-    #                 with _disable_tracking_bn_stats(model):
-    #                     perturbed_output = model(augmented_data)
-    #                 if transform.is_geometric() > 0:
-    #                     forward_reference = self.predict_forward(
-    #                         init_output.detach(), [transform])
-    #                     warped_back_prediction = self.predict_backward(
-    #                         perturbed_output, [transform])
-    #                     forward_backward_reference = self.predict_backward(
-    #                         forward_reference, [transform])
-    #                     masks = torch.ones_like(
-    #                         init_output, dtype=init_output.dtype, device=init_output.device)
-    #                     forward_backward_mask = self.pedict_backward(
-    #                         self.predict_forward(masks, [transform]), [transform])
-    #                     forward_backward_mask[forward_backward_mask != 0] = 1.
-    #                     dist = self.loss_fn(
-    #                         pred=warped_back_prediction, reference=forward_backward_reference, mask=forward_backward_mask)
-    #                 else:
-    #                     dist = self.loss_fn(
-    #                         pred=perturbed_output, reference=init_output.detach())
-    #                 if self.debug:
-    #                     print('{} dist {} '.format(str(i), dist.item()))
-    #                 dist.backward()
-    #                 transform.optimize_parameters(step_size=1/np.sqrt(i+1))
-    #                 model.zero_grad()
-    #             transform.rescale_parameters()
-    #             transform.eval()
-    #             if stack:
-    #                 data = transform.forward(data)
-
-    #         new_transforms.append(transform)
-    #     return new_transforms
-
-    def get_init_output(self, model, data):
-        with torch.no_grad():
-            with _disable_tracking_bn_stats(model):
-                reference_output = model(data)
-        return reference_output
-
-    def backward(self, data, chain_of_transforms=None):
-        '''
-        warp it back to image space
-        only activate when the augmentation is a geometric transformation
-        '''
-        if chain_of_transforms is None:
-            chain_of_transforms = self.chain_of_transforms
-        for transform in reversed(chain_of_transforms):
-            data = transform.backward(data)
-        return data
-
-    def predict_backward(self, data, chain_of_transforms=None):
-        '''
-        warp it back to image space
-        only activate when the augmentation is a geometric transformation
-        '''
-        if chain_of_transforms is None:
-            chain_of_transforms = self.chain_of_transforms
-        for transform in reversed(chain_of_transforms):
-            data = transform.predict_backward(data)
-        return data
-
     def rescale_intensity(self, data, new_min=0, new_max=1, eps=1e-20):
         '''
         rescale pytorch batch data
@@ -426,7 +311,94 @@ class ComposeAdversarialTransformSolver(object):
         new_data = new_data.view(bs, c, h, w)
         return new_data
 
+    def get_init_output(self, model, data):
+        with torch.no_grad():
+            with _disable_tracking_bn_stats(model):
+                reference_output = model(data)
+        return reference_output
 
+    def get_adv_data(self, data, model, init_output=None, n_iter=0):
+        """
+        given an input data and current segmentation model, return augmented input, and corresponding reference
+        if init_output is now, use original prediction as pseudo labels.
+        Args:
+            data (torch tensor): input data
+            model (torch.nn.Module): segmentation model
+            init_output ([type], optional): [4-dim onehot labels or probs predictions]. Defaults to None.
+            n_iter (int, optional): [description]. Defaults to 0.
+
+        Returns:
+            [augmented data]: torch tensor, 4-dim output,
+            [correspondong labels for reference]: torch tensor, 4-dim output
+        """
+        if init_output is None:
+            init_output = self.get_init_output(model, data)
+        self.init_random_transformation()
+        origin_data = data.detach().clone()
+        if n_iter > 0:
+            optimized_transforms = self.optimizing_transform(
+                data=data, model=model, init_output=init_output, n_iter=n_iter, optimize_flags=[True]*len(self.chain_of_transforms))
+        else:
+            optimized_transforms = self.chain_of_transforms
+        augmented_data = self.forward(origin_data, optimized_transforms)
+        augmented_label = self.predict_forward(
+            init_output, optimized_transforms)
+        return augmented_data, augmented_label
+
+    def if_contains_geo_transform(self, chain_of_transforms=None):
+        """
+        check if the predefined transformation contains geometric transform
+        Returns:
+            [boolean]: return True if geometric transformation is involved, otherwise false.
+        """
+        if chain_of_transforms is None:
+            chain_of_transforms = self.chain_of_transforms
+        sum_flag = 0
+
+        for transform in chain_of_transforms:
+            sum_flag += transform.is_geometric()
+        return sum_flag > 0
+
+    def init_random_transformation(self, lazy_load=False):
+        # initialize transformation parameters
+        '''
+        randomly initialize random parameters
+        return 
+        list of random parameters, and list of random transform
+
+        '''
+        for transform in self.chain_of_transforms:
+            if lazy_load:
+                if transform.param is None:
+                    transform.init_parameters()
+            else:
+                transform.init_parameters()
+
+    def set_transformation(self, parameter_list):
+        """
+        set the values of transformations accordingly
+
+        Args:
+            parameter_list ([type]): [description]
+        """
+        # reset transformation parameters
+        for i, param in enumerate(parameter_list):
+            self.chain_of_transforms[i].set_parameters(param)
+
+    def make_learnable_transformation(self, optimize_flags, chain_of_transforms=None):
+        """[summary]
+        make transformation parameters learnable
+        Args:
+            power_iterations ([boolean]): [description]
+            chain_of_transforms ([list of adv transformation functions], optional): 
+            [description]. Defaults to None. if not specified, use self.transformation instead
+        """
+        # reset transformation parameters
+        if chain_of_transforms is None:
+            chain_of_transforms = self.chain_of_transforms
+        for flag, transform in zip(optimize_flags, chain_of_transforms):
+            if flag:
+                transform.train()
 # if __name__ == "__main__":
 #     import os
 #     import torch

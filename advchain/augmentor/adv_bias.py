@@ -77,7 +77,7 @@ class AdvBias(AdvTransformBase):
             self.data_size[2:]), 'downscale factor is too  large'
         self.control_point_spacing = [
             i//self.downscale for i in config_dict['control_point_spacing']]
-        if (sum(self.control_point_spacing) > sum([40]*len(self.control_point_spacing))):
+        if (sum(self.control_point_spacing) > sum([48]*len(self.control_point_spacing))):
             logging.warning(
                 'control point spacing may be too large, please increase the downscale factor.')
         self.interpolation_order = config_dict['interpolation_order']
@@ -139,6 +139,8 @@ class AdvBias(AdvTransformBase):
         :return:
         tensor: transformed images
         '''
+        if self.debug:
+            print('apply bias field augmentation')
         if self.param is None:
             self.init_parameters()
         if self.power_iteration and self.is_training:
@@ -154,8 +156,7 @@ class AdvBias(AdvTransformBase):
             bias_field = bias_field.expand(data.size())
 
         transformed_input = bias_field*data
-        if self.debug:
-            print('apply bias field augmentation')
+
         return transformed_input
 
     def backward(self, data):
@@ -289,7 +290,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         """
         if magnitude is None:
             magnitude = self.magnitude
-        assert magnitude > 0
+        assert magnitude >= 0
 
         # bias_field =1+magnitude*self.unit_normalize(bias_field-1, p_type ='Infinity')
         bias = bias_field-1
