@@ -9,7 +9,7 @@ Please cite our work if you find it useful in your work.
 
 <img align="center" src="assets/graphical_abstract.png" width="750">
 
-2.  Adv Chain finds effective transformations to perturb images, targeting the weakness of the network. As shown below, the learned adversarial data augmentation focus more on deforming/attacking region of interest, generating realistic adversarial examples. In our experiments, we found these adversarial examples are beneficial for enhancing the segmentation network's generalization.
+2.  As shown below, the learned adversarial data augmentation focuses more on deforming/attacking region of interest, generating realistic adversarial examples that the network is sensitive at. In our experiments, we found these adversarial examples are beneficial for enhancing the segmentation network's generalization.
     <img align="center" src="assets/cardiac_example.png" width="750">
 
 For more details please see our paper on [Arxiv](https://arxiv.org/abs/2108.03429).
