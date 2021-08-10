@@ -5,11 +5,11 @@ Please cite our work if you find it useful in your work.
 
 ## Introduction
 
-1. Overview: Adv Chain takes both image information and network's current knowledge into account, and utilizes these information to find effective transformation parameters that are beneficial for the downstream segmentation tasks.
+1. Overview: Adv Chain takes both image information and network's current knowledge into account, and utilizes these information to find effective transformation parameters that are beneficial for the downstream segmentation task.
 
 <img align="center" src="assets/graphical_abstract.png" width="750">
 
-2.  As shown below, the learned adversarial data augmentation focuses more on deforming/attacking region of interest, generating realistic adversarial examples that the network is sensitive at. In our experiments, we found these adversarial examples are beneficial for enhancing the segmentation network's generalization.
+2.  As shown below, the learned adversarial data augmentation focuses more on deforming/attacking region of interest, generating realistic adversarial examples that the network is sensitive at. In our experiments, we found these adversarial examples are beneficial for enhancing the segmentation network's generalizability.
     <img align="center" src="assets/cardiac_example.png" width="750">
 
 For more details please see our paper on [arXiv](https://arxiv.org/abs/2108.03429).
