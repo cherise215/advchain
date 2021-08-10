@@ -217,6 +217,8 @@ class AdvMorph(AdvTransformBase):
         :return:
         tensor: transformed images
         '''
+        if self.debug:
+            print('apply morphological transformation')
         if self.param is None:
             self.init_parameters()
         if interpolation_mode is None:
@@ -231,8 +233,7 @@ class AdvMorph(AdvTransformBase):
 
         self.diff = transformed_image-data
         self.displacement = displacement
-        if self.debug:
-            print('apply morphological transformation')
+      
         return transformed_image
 
     def backward(self, data, interpolation_mode=None):

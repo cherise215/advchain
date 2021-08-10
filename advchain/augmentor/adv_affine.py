@@ -68,7 +68,8 @@ class AdvAffine(AdvTransformBase):
         :return:
         tensor: transformed images
         '''
-
+        if self.debug:
+            print('apply affine transformation')
         if self.param is None:
             self.init_parameters()
         if interp is None:
@@ -83,8 +84,7 @@ class AdvAffine(AdvTransformBase):
             data, self.affine_matrix, interp=interp, padding_mode=padding_mode)
         self.diff = data-transformed_input
 
-        if self.debug:
-            print('apply affine transformation')
+
         return transformed_input
 
     def predict_forward(self, data):

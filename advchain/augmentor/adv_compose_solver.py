@@ -1,5 +1,6 @@
 import logging
 import numpy as np
+from sqlalchemy import Integer
 import torch
 import torch.nn.functional as F
 
@@ -32,9 +33,12 @@ class ComposeAdversarialTransformSolver(object):
         self.is_gt = is_gt
         self.class_weights = None
 
-    def adversarial_training(self, data, model, init_output=None, lazy_load=False, n_iter=1,
+    def adversarial_training(self, data, model,
                              optimize_flags=None,
+                             init_output=None,
+                             lazy_load=False,
                              power_iteration='smart',
+                             n_iter=1,
                              step_sizes=None,
                              ):
         """
@@ -42,25 +46,27 @@ class ComposeAdversarialTransformSolver(object):
         find optimized transformations 
         return the adversarial consistency loss for network training
         Args:
-            data ([torch 4d tensor]): [input images]
-            model ([torch.nn.Module]): segmentation model
-            init_output([torch 4d tensor],optional):network predictions on input images using the current model.Defaults to None. 
+            data (torch 4d tensor): input images
+            model (torch.nn.Module): segmentation model
+            optimize_flags (list of boolean, optional): if set to true, will optimize corresponding the params in the corresponding transformation function.  Defaults to None. If n_iter>0, will set to be true for the chain,  otherwise, false.
+            init_output(torch 4d tensor],optional):network predictions on input images using the current model. Defaults to None. 
             lazy_load (bool, optional): if true, if will use previous random parameters (if have been initialized). Defaults to False.
+            power_iteration (list of boolean, optional): if set to true, will perform power iteration to update the transformation parameters, see virtual adversarial training for details. Defaults to 'smart'. if set to 'smart', will apply power iteration for noise generation (as what has been done in VAT)
+                                                             while projected gradient descent (PGD) to the others. If set to False, will perform basic PGD to all transformations.
             n_iter (int, optional): innner iterations to optimize data augmentation. Defaults to 1.
-            optimize_flags ([list of boolean], optional): [description]. Defaults to None.
-            power_iteration ([list of boolean], optional): [description]. Defaults to 'smart'. if set to 'smart', will apply power iteration for noise generation (as what has been done in VAT)
-                                                             while PGD to others. If set to False, will perform basic PGD to all transformations.
+
+            step_sizes(float or a  list of float, optional): initial  step size for update. Defaults to 1. During optimization, the step size for iteration t will be decreased for stabilizing the inner optimization, using the schedule: 1/sqrt(t+1)*step_size.  
         Raises:
             NotImplementedError: [check whether the string for specifying optimization_mode is valid]
 
         Returns:
-            dist [loss tensor]: [adv consistency loss for network regularisation]
+            dist [loss 1d tensor]: [adv consistency loss for network regularisation]
         """
         '''
      
         '''
-
-        # 1. set up optimization mode for each transformation
+        # 1. initialization
+        # set up optimization mode:  whether to update transformation parameters or nots
         if optimize_flags is not None:
             assert len(self.chain_of_transforms) == len(
                 optimize_flags), 'must specify each transform is learnable or not'
@@ -71,7 +77,7 @@ class ComposeAdversarialTransformSolver(object):
                 optimize_flags = [True] * len(self.chain_of_transforms)
             else:
                 raise NotImplementedError
-
+        # set up optimization alg.
         if isinstance(power_iteration, bool):
             power_iterations = [power_iteration]*len(self.chain_of_transforms)
         elif isinstance(power_iteration, list):
@@ -83,23 +89,33 @@ class ComposeAdversarialTransformSolver(object):
             if "smart" == power_iteration:
                 power_iterations = []
                 for i, transform in enumerate(self.chain_of_transforms):
+                    # use power_iteration for adv noise generation, following VAT
                     power = True if transform.get_name() == 'noise' else False
                     power_iterations.append(power)
         for i, power_iteration in enumerate(power_iterations):
             self.chain_of_transforms[i].power_iteration = power_iteration
 
+        # set up step size for the first iteration.
         if step_sizes is None:
             logging.info('use default step size: 1 for every transformation')
             step_sizes = [1]*len(self.chain_of_transforms)
         else:
-            assert len(step_sizes) == len(
-                self.chain_of_transforms), 'specify step size for each transformation'
-            # print ('power_iterations',power_iterations)
+            if isinstance(step_sizes, float) or isinstance(step_sizes, int):
+                logging.info(
+                    'set the same step size:{} for every transformation'.format(step_sizes))
+                step_sizes = [step_sizes]*len(self.chain_of_transforms)
+
+            elif isinstance(step_sizes, list):
+                assert len(step_sizes) == len(
+                    self.chain_of_transforms), 'specify step size for each transformation'
+            else:
+                raise ValueError(
+                    'please use scalar or a  list of scalar to set step size')
         # 2. get reference predictions f(x)
         if init_output is None:
             init_output = self.get_init_output(data=data, model=model)
 
-        # 3. optimize transformation  to maxmize the difference between f(x) and f(t(x))
+        # 3. optimize transformation to maxmize the difference between f(x) and f(t(x))
         self.init_random_transformation(lazy_load)
         if n_iter == 1 or n_iter > 1:
             optimized_transforms = self.optimizing_transform(
@@ -275,17 +291,21 @@ class ComposeAdversarialTransformSolver(object):
                 print('[inner loop], step {}: dist {}'.format(
                     str(i), dist.item()))
             dist.backward()
+            i_tr = 0
             for flag, transform in zip(optimize_flags, self.chain_of_transforms):
                 if flag:
                     if self.debug:
                         print('update {} parameters'.format(
                             transform.get_name()))
-                    if step_sizes is None:
+                    try:
+                        step_size = step_sizes[i_tr]
+                    except:
+                        logging.warning('use default step size: 1')
                         step_size = transform.get_step_size()
-                    else:
-                        step_size = step_sizes[i]
                     transform.optimize_parameters(
                         step_size=step_size/np.sqrt((i+1)))
+                i_tr += 1
+
             model.zero_grad()
 
         transforms = []
@@ -373,6 +393,9 @@ class ComposeAdversarialTransformSolver(object):
                     transform.init_parameters()
             else:
                 transform.init_parameters()
+
+    def reset_transformation(self):
+        self.init_random_transformation(lazy_load=False)
 
     def set_transformation(self, parameter_list):
         """

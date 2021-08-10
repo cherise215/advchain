@@ -5,11 +5,9 @@ Please cite our work if you find it useful in your work
 
 ## Introduction
 
-Under construction.
+<img align="center" src="assets/graphical_abstract.pdf" width="750">
 
-<!-- <img align="center" src="assets/adv_chain.png" width="750"> -->
-
-<!-- For more details please see our [MICCAI 2020 paper](https://arxiv.org/abs/2006.13322) and [Youtube Video](https://youtu.be/-ICKhtkxY-4). -->
+For more details please see our paper on [Arxiv](https://arxiv.org/abs/2108.03429) and
 
 ## Requirements
 
@@ -30,10 +28,7 @@ Under construction.
 
 ## Usage
 
-Under construction
-
-<!-- 1. Please ref to Sec. 4.1 and Sec 4.2 in the jupyter notebook: "adv_bias_field_generation.ipynb" to see how to plug in our module to support supervised/semi-supervised learning.
-2. You can also clone this probject as submodule in your project.
+1. You can clone this probject as submodule in your project.
 
 - Add submodule:
   ```
@@ -41,14 +36,27 @@ Under construction
   ```
 - Add the lib path to the file where you import our library:
   ```
-  sys.path.append($change_it_to_our_project's_local_path_in_your_project$)
-  ``` -->
+  sys.path.append($path-to-advchain$)
+  ```
+
+2. Import the library and then add it to your training codebase. Please refer to examples under the `example/` folder for more details.
 
 ## Citation
 
 If you find this useful for your work, please consider citing
 
 ```
+@ARTICLE{Chen_2021_Enhancing,
+  title  = "Enhancing {MR} Image Segmentation with Realistic Adversarial Data Augmentation",
+  journal = {arXiv preprint},
+  author = "Chen, Chen and Qin, Chen and Ouyang, Cheng and Wang, Shuo and Qiu,
+            Huaqi and Chen, Liang and Tarroni, Giacomo and Bai, Wenjia and
+            Rueckert, Daniel",
+    year = 2021,
+    note = {\url{https://arxiv.org/abs/2108.03429}}
+}
+
+
 @INPROCEEDINGS{Chen_MICCAI_2020_Realistic,
   title     = "Realistic Adversarial Data Augmentation for {MR} Image
                Segmentation",
