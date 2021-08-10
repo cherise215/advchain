@@ -5,7 +5,7 @@ Please cite our work if you find it useful in your work
 
 ## Introduction
 
-<img align="center" src="assets/graphical_abstract.pdf" width="750">
+<img align="center" src="assets/graphical_abstract.png" width="750">
 
 For more details please see our paper on [Arxiv](https://arxiv.org/abs/2108.03429) and
 
