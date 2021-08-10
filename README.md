@@ -12,7 +12,7 @@ Please cite our work if you find it useful in your work.
 2.  As shown below, the learned adversarial data augmentation focuses more on deforming/attacking region of interest, generating realistic adversarial examples that the network is sensitive at. In our experiments, we found these adversarial examples are beneficial for enhancing the segmentation network's generalization.
     <img align="center" src="assets/cardiac_example.png" width="750">
 
-For more details please see our paper on [Arxiv](https://arxiv.org/abs/2108.03429).
+For more details please see our paper on [arXiv](https://arxiv.org/abs/2108.03429).
 
 ## Requirements
 
@@ -53,7 +53,7 @@ If you find this useful for your work, please consider citing
 ```
 @ARTICLE{Chen_2021_Enhancing,
   title  = "Enhancing {MR} Image Segmentation with Realistic Adversarial Data Augmentation",
-  journal = {arXiv preprint},
+  journal = {arXiv Preprint},
   author = "Chen, Chen and Qin, Chen and Ouyang, Cheng and Wang, Shuo and Qiu,
             Huaqi and Chen, Liang and Tarroni, Giacomo and Bai, Wenjia and
             Rueckert, Daniel",
