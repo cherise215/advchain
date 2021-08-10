@@ -29,7 +29,7 @@ For more details please see our paper on [arXiv](https://arxiv.org/abs/2108.0342
     ```
     pip install -r requirements.txt
     ```
-2.  Play with the provided jupyter notebook to check the enviroments
+2.  Play with the provided jupyter notebook to check the enviroments, see `example/adv_chain_data_generation_cardiac.ipynb`
 
 ## Usage
 
