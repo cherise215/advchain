@@ -17,11 +17,13 @@ class AdvAffine(AdvTransformBase):
 
     def __init__(self,
                  config_dict={
-                     'rot': 15.0/180.0,
+                     'rot': 15.0 / 180.0,
                      'scale_x': 0.2,
                      'scale_y': 0.2,
                      'shift_x': 0.1,
                      'shift_y': 0.1,
+                     'shear_x': 0.,
+                     'shear_y': 0.,
                      'data_size': [1, 1, 8, 8],
                      'forward_interp': 'bilinear',
                      'backward_interp': 'bilinear'
@@ -44,6 +46,8 @@ class AdvAffine(AdvTransformBase):
         self.translation_y = config_dict['shift_y']
         self.scale_x = config_dict['scale_x']
         self.scale_y = config_dict['scale_y']
+        self.shear_x = config_dict['shear_x']
+        self.shear_y = config_dict['shear_y']
         self.xi = 1e-6
         self.data_size = config_dict['data_size']
         self.forward_interp = config_dict['forward_interp']
@@ -76,14 +80,13 @@ class AdvAffine(AdvTransformBase):
             interp = self.forward_interp
         if self.power_iteration and self.is_training:
             self.affine_matrix = self.gen_batch_affine_matrix(
-                self.xi*self.param)
+                self.xi * self.param)
         else:
             self.affine_matrix = self.gen_batch_affine_matrix(self.param)
 
         transformed_input = self.transform(
             data, self.affine_matrix, interp=interp, padding_mode=padding_mode)
-        self.diff = data-transformed_input
-
+        self.diff = data - transformed_input
 
         return transformed_input
 
@@ -103,11 +106,11 @@ class AdvAffine(AdvTransformBase):
     def draw_random_affine_tensor_list(self, batch_size, identity_init=False):
         if identity_init:
             affine_tensor = torch.zeros(
-                batch_size, 5, device=self.device, dtype=torch.float32)
+                batch_size, 7, device=self.device, dtype=torch.float32)
         else:
             ## initialization [-1,1]
-            affine_tensor = (2*torch.rand(batch_size, 5,
-                                          dtype=torch.float32, device=self.device)-1)
+            affine_tensor = (2 * torch.rand(batch_size, 7,
+                                            dtype=torch.float32, device=self.device) - 1)
             affine_tensor = torch.nn.Hardtanh()(affine_tensor)
 
         return affine_tensor
@@ -124,7 +127,7 @@ class AdvAffine(AdvTransformBase):
             self.param = grad.detach()
         else:
             grad = self.param.grad.sign().detach()
-            param = self.param+step_size*grad
+            param = self.param + step_size * grad
             self.param = param.detach()
         return self.param
 
@@ -143,20 +146,21 @@ class AdvAffine(AdvTransformBase):
     def gen_batch_affine_matrix(self, affine_tensors):
         '''
         given affine parameters, gen batch-wise affine_matrix [bs*2*3]
-        :param affine_tensors:N*5 , [rot_radius, scale, tx,ty]
+        :param affine_tensors:N*7 , [rot_radius, scalex, scale_y, tx,ty,shear_x,shear_y]
         :return:
          affine_matrix [bs*2*3]
         '''
         # restrict transformations between [-1,1]
         affine_tensors = torch.nn.Hardtanh()(affine_tensors)
-        rot_radius, scalex, scaley, tx, ty = affine_tensors[:, 0], affine_tensors[:,
-                                                                                  1], affine_tensors[:, 2], affine_tensors[:, 3], affine_tensors[:, 4]
+        rot_radius, scalex, scaley, tx, ty, shear_x, shear_y = affine_tensors[:, 0], affine_tensors[:,
+                                                                                                    1], affine_tensors[:, 2], affine_tensors[:, 3], affine_tensors[:, 4], affine_tensors[:, 5], affine_tensors[:, 6]
         transformation_matrix = torch.stack([
-            torch.stack([(1+scalex*self.scale_x) * (torch.cos(rot_radius*self.rot_ratio*math.pi)), (1+scaley *
-                                                                                                    self.scale_y) * (-torch.sin(rot_radius*self.rot_ratio*math.pi)), tx*self.translation_x], dim=-1),
-            torch.stack([(1+scalex*self.scale_x) * (torch.sin(rot_radius*self.rot_ratio*math.pi)), (1+scaley *
-                                                                                                    self.scale_y) * (torch.cos(rot_radius*self.rot_ratio*math.pi)), ty*self.translation_y], dim=-1)
+            torch.stack([(1 + scalex * self.scale_x) * (torch.cos(rot_radius * self.rot_ratio * math.pi)) + self.shear_y * shear_y * (1 + scaley *
+                                                                                                                                      self.scale_y) * (-torch.sin(rot_radius * self.rot_ratio * math.pi)), shear_x * self.shear_x * (1 + scalex * self.scale_x) * (torch.cos(rot_radius * self.rot_ratio * math.pi)) + (1 + scaley * self.scale_y) * (-torch.sin(rot_radius * self.rot_ratio * math.pi)), tx * self.translation_x], dim=-1),
+            torch.stack([(1 + scalex * self.scale_x) * (torch.sin(rot_radius * self.rot_ratio * math.pi)) + self.shear_y * shear_y * (1 + scaley * self.scale_y) * (torch.cos(rot_radius * self.rot_ratio * math.pi)),
+                         (shear_x * self.shear_x) * (1 + scalex * self.scale_x) * (torch.sin(rot_radius * self.rot_ratio * math.pi)) + (1 + scaley * self.scale_y) * (torch.cos(rot_radius * self.rot_ratio * math.pi)), ty * self.translation_y], dim=-1)
         ], dim=1)
+
         if self.use_gpu:
             transformation_matrix.cuda()
         return transformation_matrix
@@ -203,10 +207,22 @@ if __name__ == "__main__":
 
     dir_path = './log'
     check_dir(dir_path, create=True)
-    images = torch.zeros((1, 1, 8, 8)).cuda()
-    images[:, :, 2:5, 2:5] = 1.0
+    images = torch.zeros((1, 1, 120, 120)).cuda()
+    images[:, :, 20:50, 20:50] = 1.0
     print('input:', images)
-    augmentor = AdvAffine(debug=True)
+    augmentor = AdvAffine(
+        config_dict={
+            'rot': 0,
+            'scale_x': 0.,
+            'scale_y': 0.,
+            'shift_x': 0.,
+            'shift_y': 0.,
+            'shear_x': 0.,
+            'shear_y': 0.,
+            'data_size': [1, 1, 8, 8],
+            'forward_interp': 'bilinear',
+            'backward_interp': 'bilinear'
+        }, debug=True)
     augmentor.init_parameters()
     transformed = augmentor.forward(images)
     recovered = augmentor.backward(transformed)
@@ -217,7 +233,7 @@ if __name__ == "__main__":
     mask[mask == 1] = True
     mask[mask != 1] = False
     print('mask', mask)
-    error = recovered-images
+    error = recovered - images
     print('sum error', torch.sum(error))
     plt.subplot(131)
     plt.imshow(images.cpu().numpy()[0, 0])
