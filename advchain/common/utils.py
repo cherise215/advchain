@@ -123,9 +123,9 @@ def _disable_tracking_bn_stats(model):
                 old_states[name] = old_state
         return old_states
 
-    old_states = switch_attr(model, False)
+    old_states = switch_attr(model, new_state=False)
     yield
-    switch_attr(model, old_states)
+    switch_attr(model, hist_states=old_states)
 
 
 def set_grad(module, requires_grad=False):
