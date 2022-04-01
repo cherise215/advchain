@@ -24,7 +24,10 @@ For more details please see our paper on [arXiv](https://arxiv.org/abs/2108.0342
 - torch>=1.9.0
 
 ## Set Up
-
+1.  Upgrade pip to the latest:
+    ```
+    pip install --upgrade pip
+    ```
 1.  Install PyTorch and other required python libraries with:
     ```
     pip install -r requirements.txt

@@ -1,3 +1,4 @@
+from cv2 import magnitude
 import numpy as np
 import torch.nn.functional as F
 import torch
@@ -99,13 +100,14 @@ class AdvBias(AdvTransformBase):
         self.batch_size = self.data_size[0]
         self._image_size = np.array(self.data_size[2:])
         self.magnitude = self.epsilon
+        assert 0<=self.magnitude<1, 'please set magnitude witihin [0,1)'
         self.order = self.interpolation_order
         self.downscale = self.downscale  # reduce image size to save memory
 
-        self.use_log = True  # if self.space == 'log' else False
+        self.use_log = True  if self.space == 'log' else False
 
         # contruct and initialize control points grid with random values
-        self.param, self.interp_kernel, self.bias_field = self.init_bias_field()
+        self.param, self.interp_kernel = self.init_control_points_config()
         return self.param
 
     def train(self):
@@ -115,8 +117,7 @@ class AdvBias(AdvTransformBase):
         self.param = torch.nn.Parameter(self.param.data, requires_grad=True)
 
     def rescale_parameters(self):
-        # restrict control points values in the 1-ball space
-        self.param = self.unit_normalize(self.param, p_type='l2')
+        self.param = torch.clamp(self.param,self.low, self.high)
 
     def optimize_parameters(self, step_size=0.3):
         if self.power_iteration:
@@ -129,8 +130,7 @@ class AdvBias(AdvTransformBase):
             self.param = self.param.clone().detach()
         return self.param
 
-    def set_parameters(self, param):
-        self.param = param.detach()
+
 
     def forward(self, data):
         '''
@@ -148,12 +148,13 @@ class AdvBias(AdvTransformBase):
         else:
             bias_field = self.compute_smoothed_bias(self.param)
 
-        self.bias_field = bias_field
-        self.diff = bias_field
 
         # in case the input image is a multi-channel input.
         if bias_field.size(1) < data.size(1):
             bias_field = bias_field.expand(data.size())
+        bias_field = self.clip_bias(bias_field, self.magnitude)
+        self.bias_field = bias_field
+        self.diff = bias_field
 
         transformed_input = bias_field*data
 
@@ -171,7 +172,7 @@ class AdvBias(AdvTransformBase):
     def predict_backward(self, data):
         return data
 
-    def init_bias_field(self, init_mode=None):
+    def init_control_points_config(self, init_mode=None):
         '''
         init cp points, interpolation kernel, and  corresponding bias field.
         :param batch_size:
@@ -206,13 +207,20 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
             np.remainder(image_size_diff, 2)*np.sign(image_size_diff)
         self._crop_end = image_size_diff_floor
         self.cp_grid = [self.batch_size, 1] + cp_grid.tolist()
-
+        self.low = -np.Inf
+        self.high = np.Inf
         # initialize control points parameters for optimization
         if mode == 'gaussian':
             self.param = torch.ones(*self.cp_grid).normal_(mean=0, std=0.5)
         elif mode == 'random':
-            self.param = (torch.rand(*self.cp_grid)*2-1) * \
-                self.epsilon  # -eps,eps
+            if self.use_log:
+                self.low = np.log(1-self.magnitude)
+                self.high = np.log(1+self.magnitude)
+            else:
+                self.low  = -self.magnitude
+                self.high = self.magnitude
+
+            self.param = torch.rand(*self.cp_grid)*(self.high-self.low)+self.low
 
         elif mode == 'identity':
             # static initialization, bias free
@@ -220,7 +228,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         else:
             raise NotImplementedError
 
-        self.param = self.unit_normalize(self.param, p_type='l2')
+        # self.param = self.unit_normalize(self.param, p_type='l2')
         self.param = self.param.to(dtype=self._dtype, device=self._device)
 
         # convert to integer
@@ -233,13 +241,13 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         self.interp_kernel = self.get_bspline_kernel(
             order=self.order, spacing=self.spacing)
         self.interp_kernel = self.interp_kernel.to(self.param.device)
-        self.bias_field = self.compute_smoothed_bias(
-            self.param, padding=self._padding, stride=self._stride)
+        self.bias_field =self.clip_bias(self.compute_smoothed_bias(
+            self.param, padding=self._padding, stride=self._stride), self.magnitude)
         if self.debug:
             print('initialize control points: {}'.format(
                 str(self.param.size())))
 
-        return self.param, self.interp_kernel, self.bias_field
+        return self.param, self.interp_kernel
 
     def compute_smoothed_bias(self, cpoint=None, interpolation_kernel=None, padding=None, stride=None):
         '''
@@ -263,19 +271,17 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
 
         # recover bias field to original image resolution for efficiency.
         if self.debug:
-            print('[bias] after intep, size:', bias_field_tmp.size())
+            print('[bias] after bspline intep, size:', bias_field_tmp.size())
         scale_factor_h = self._image_size[0] / bias_field_tmp.size(2)
         scale_factor_w = self._image_size[1] / bias_field_tmp.size(3)
 
-        if scale_factor_h > 1 or scale_factor_w > 1:
-            upsampler = torch.nn.Upsample(scale_factor=(scale_factor_h, scale_factor_w), mode='bilinear',
+        upsampler = torch.nn.Upsample(size = (self._image_size[0] , self._image_size[1]), mode='bilinear',
                                           align_corners=False)
-            diff_bias = upsampler(bias_field_tmp)
+        diff_bias = upsampler(bias_field_tmp)
+        if self.use_log:
+            bias_field = torch.exp(diff_bias)
         else:
-            diff_bias = bias_field_tmp
-
-        bias_field = torch.exp(diff_bias)
-        bias_field = self.clip_bias(bias_field, self.epsilon)
+            bias_field=1+diff_bias
         return bias_field
 
     def clip_bias(self, bias_field, magnitude=None):
@@ -321,13 +327,9 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         return 0
 
 
+
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    from os.path import join as join
-
-    from advchain.common.utils import check_dir
-    dir_path = './log'
-    check_dir(dir_path, create=True)
     images = torch.ones(2, 1, 128, 128).cuda()
     images[:, :, ::2, ::2] = 2.0
     images[:, :, ::3, ::3] = 3.0
@@ -337,6 +339,7 @@ if __name__ == "__main__":
     print('input:', images)
     augmentor = AdvBias(
         config_dict={'epsilon': 0.3,
+                     'xi': 1e-1,
                      'control_point_spacing': [32, 32],
                      'downscale': 2,
                      'data_size': [2, 1, 128, 128],
@@ -345,8 +348,6 @@ if __name__ == "__main__":
                      'space': 'log'},
         power_iteration=False,
         debug=True, use_gpu=True)
-
-    # perform random bias field
     augmentor.init_parameters()
     transformed = augmentor.forward(images)
     error = transformed-images
@@ -360,4 +361,4 @@ if __name__ == "__main__":
 
     plt.subplot(133)
     plt.imshow((transformed/images).detach().cpu().numpy()[0, 0])
-    plt.savefig(join(dir_path, 'test_bias.png'))
+    plt.savefig('./result/log/debug/test_bias.png')

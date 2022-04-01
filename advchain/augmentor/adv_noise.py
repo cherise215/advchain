@@ -39,8 +39,7 @@ class AdvNoise(AdvTransformBase):
         initialize transformation parameters
         return random transformaion parameters
         '''
-        noise = self.epsilon * \
-            self.unit_normalize(torch.randn(
+        noise =self.unit_normalize(torch.randn(
                 *self.data_size, device=self.device, dtype=torch.float32))
         self.param = noise
         return noise
@@ -60,8 +59,6 @@ class AdvNoise(AdvTransformBase):
             self.param = self.param.detach()
         return self.param
 
-    def set_parameters(self, param):
-        self.param = param.detach()
 
     def forward(self, data):
         '''
@@ -77,11 +74,14 @@ class AdvNoise(AdvTransformBase):
         if self.power_iteration and self.is_training:
             transformed_input = data+self.xi*self.param
         else:
-            transformed_input = data+self.param
+            transformed_input = data+self.epsilon * self.param
 
         self.diff = transformed_input - data
 
         return transformed_input
+    def rescale_parameters(self):
+        #restrict noise in the 1-ball space
+        self.param = self.unit_normalize(self.param, p_type='l2')
 
     def backward(self, data):
         if self.debug:
@@ -97,6 +97,8 @@ class AdvNoise(AdvTransformBase):
 
     def train(self):
         self.is_training = True
+        if self.param is None:
+            self.init_parameters()
         if self.power_iteration:
             self.param = self.unit_normalize(self.param)
         self.param = torch.nn.Parameter(self.param, requires_grad=True)

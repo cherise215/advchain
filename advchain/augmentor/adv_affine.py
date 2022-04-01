@@ -17,7 +17,7 @@ class AdvAffine(AdvTransformBase):
 
     def __init__(self,
                  config_dict={
-                     'rot': 15.0 / 180.0,
+                     'rot': 30.0 / 180.0,
                      'scale_x': 0.2,
                      'scale_y': 0.2,
                      'shift_x': 0.1,
@@ -131,10 +131,8 @@ class AdvAffine(AdvTransformBase):
             self.param = param.detach()
         return self.param
 
-    def set_parameters(self, param):
-        self.param = param.detach()
-
     def rescale_parameters(self):
+        ## the scale of each operation is explicitly constrained in the transformation model, see get_batch_affine_matrix
         return self.param
 
     def train(self):

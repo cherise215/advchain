@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
-
 from advchain.augmentor.adv_transformation_base import AdvTransformBase  # noqa
 
 logger = logging.getLogger(__name__)
@@ -137,20 +136,8 @@ def applyComposition2D(flow1, flow2):
     :return:
     flow_field/deformation field h= g(f(x)):A->C, [dx,dy], N*2*H*W
     """
-    # batch_size, num_channels, image_height, image_width = flow1.size()
-    #
-    # grid_h, grid_w = get_base_grid(batch_size, image_height, image_width)
-    #
-    # offset_x, offset_y = flow2[:,[0],:,:],flow2[:,[1],:,:]
-    # offset_y = grid_h + offset_y
-    # offset_x = grid_w + offset_x
-    # offsets = torch.cat((offset_x,offset_y), 1) ## N2HW
-
     interpolated_f1 = F.grid_sample(flow1, flow2.permute(
         0, 2, 3, 1), padding_mode='border', align_corners=True)  # NCHW
-    # grid_field = torch.cat((grid_w, grid_h),1)
-    # out_field = torch.sub(torch.add(offsets, interpolated_f1),grid_field)
-
     return interpolated_f1
 
 
@@ -220,7 +207,7 @@ class AdvMorph(AdvTransformBase):
         if self.debug:
             print('apply morphological transformation')
         if self.param is None:
-            self.init_parameters()
+            self.param = self.init_parameters()
         if interpolation_mode is None:
             interpolation_mode = self.interpolator_mode
         if self.power_iteration and self.is_training:
@@ -228,7 +215,7 @@ class AdvMorph(AdvTransformBase):
                 duv=self.xi*self.param)
         else:
             dxy, displacement = self.get_deformation_displacement_field(
-                duv=self.param)
+                duv=self.epsilon*self.param)
         transformed_image = self.transform(data, dxy, mode=interpolation_mode)
 
         self.diff = transformed_image-data
@@ -247,7 +234,7 @@ class AdvMorph(AdvTransformBase):
                 duv=-self.xi*self.param)
         else:
             dxy, displacement = self.get_deformation_displacement_field(
-                duv=-self.param)
+                duv=-self.epsilon*self.param)
         transformed_image = self.transform(
             data, dxy, mode=self.interpolator_mode)
         if self.debug:
@@ -283,7 +270,7 @@ class AdvMorph(AdvTransformBase):
         if not use_zero:
             duv = (torch.rand(batch_size, 2, height, width,
                               device=self.device, dtype=torch.float32)*2-1)
-            duv = self.rescale_parameters(duv)
+            duv =self.unit_normalize(duv)
         else:
             duv = torch.zeros(batch_size, 2, height, width,
                               device=self.device, dtype=torch.float32)
@@ -379,6 +366,8 @@ class AdvMorph(AdvTransformBase):
 
     def train(self):
         self.is_training = True
+        if self.param is None:
+            self.init_parameters()
         if self.power_iteration:
             self.param = self.unit_normalize(self.param)
         self.param = torch.nn.Parameter(self.param, requires_grad=True)
@@ -395,6 +384,12 @@ class AdvMorph(AdvTransformBase):
             duv = self.unit_normalize(self.param.grad)
             param = self.param+step_size*duv.detach()
         self.param = param.detach()
+        return self.param
+    
+    def rescale_parameters(self,param=None):
+        if param is None:
+            param =self.param
+        self.param =self.unit_normalize(param)
         return self.param
 
     def transform(self, data, deformation_dxy, mode='bilinear', padding_mode='border'):

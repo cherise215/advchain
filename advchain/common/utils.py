@@ -44,14 +44,14 @@ def load_image_label(image_path, label_path=None, slice_id=0, crop_size=(192, 19
     image = sitk.GetArrayFromImage(sitk.ReadImage(image_path))[slice_id]
     # print('image size:', image.shape)
 
-    h_diff = (image.shape[0]-crop_size[0])//2
-    w_diff = (image.shape[1]-crop_size[1])//2
+    h_diff = (image.shape[0] - crop_size[0]) // 2
+    w_diff = (image.shape[1] - crop_size[1]) // 2
 
     cropped_image = image[h_diff:crop_size[0] +
-                          h_diff, w_diff:crop_size[1]+w_diff]
+                          h_diff, w_diff:crop_size[1] + w_diff]
     # rescale image intensities to 0-1
-    cropped_image = (cropped_image-cropped_image.min()) / \
-        (cropped_image.max()-cropped_image.min()+1e-10)
+    cropped_image = (cropped_image - cropped_image.min()) / \
+        (cropped_image.max() - cropped_image.min() + 1e-10)
 
     if label_path is not None:
         label = sitk.GetArrayFromImage(sitk.ReadImage(label_path))[slice_id]
@@ -59,7 +59,7 @@ def load_image_label(image_path, label_path=None, slice_id=0, crop_size=(192, 19
         assert image.shape == label.shape, "The sizes of the input image and label do not match, image:{}label:{}".format(
             str(image.shape), str(label.shape))
         cropped_label = label[h_diff:crop_size[0] +
-                              h_diff, w_diff:crop_size[1]+w_diff]
+                              h_diff, w_diff:crop_size[1] + w_diff]
 
         return cropped_image, cropped_label
     else:
@@ -73,11 +73,11 @@ def rescale_intensity(data, new_min=0, new_max=1, eps=1e-20):
     :return: data with intensity ranging from 0 to 1
     '''
     bs, c, h, w = data.size(0), data.size(1), data.size(2), data.size(3)
-    data = data.view(bs*c, -1)
+    data = data.view(bs * c, -1)
     old_max = torch.max(data, dim=1, keepdim=True).values
     old_min = torch.min(data, dim=1, keepdim=True).values
     new_data = (data - old_min) / (old_max - old_min + eps) * \
-        (new_max-new_min)+new_min
+        (new_max - new_min) + new_min
     new_data = new_data.view(bs, c, h, w)
     return new_data
 
@@ -111,21 +111,33 @@ def _disable_tracking_bn_stats(model):
         Returns:
             [type]: [description]
         """
+        # please upgrade torch version to the latest due to the bug reported in https://github.com/pytorch/pytorch/issues/37823
         old_states = {}
-        for name, module in model.named_children():
-            if hasattr(module, 'track_running_stats'):
-                old_state = module.track_running_stats
+        for name, module in model.named_modules():
+            if isinstance(module, torch.nn.BatchNorm2d):
+                # print('here batch norm')
+                old_states[name] = module.track_running_stats
+                # old_state = module.track_running_stats
                 if hist_states is not None:
                     module.track_running_stats = hist_states[name]
+                    # module.train(hist_states[name])
+                    # if hasattr(module, 'weight'):
+                    #     module.weight.requires_grad_(hist_states[name])
+                    # if hasattr(module, 'bias'):
+                    #     module.bias.requires_grad_(hist_states[name])
                 else:
                     if new_state is not None:
                         module.track_running_stats = new_state
-                old_states[name] = old_state
+                        # module.train(new_state)
+                        # if hasattr(module, 'weight'):
+                        #     module.weight.requires_grad_(new_state)
+                        # if hasattr(module, 'bias'):
+                        #     module.bias.requires_grad_(new_state)
         return old_states
 
     old_states = switch_attr(model, False)
     yield
-    switch_attr(model, old_states)
+    switch_attr(model, hist_states=old_states)
 
 
 def set_grad(module, requires_grad=False):
@@ -152,7 +164,7 @@ def random_chain(alist, *args):
         else:
             return results[0]
 
-    sub_len = np.random.randint(low=1, high=length+1)
+    sub_len = np.random.randint(low=1, high=length + 1)
 
     r = random.random()            # randomly generating a real in [0,1)
     # lambda : r is an unary function which returns r

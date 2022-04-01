@@ -1,6 +1,5 @@
 import logging
 import numpy as np
-from sqlalchemy import Integer
 import torch
 import torch.nn.functional as F
 
@@ -16,7 +15,7 @@ class ComposeAdversarialTransformSolver(object):
     def __init__(self, chain_of_transforms=[], divergence_types=['kl', 'contour'],
                  divergence_weights=[1.0, 0.5], use_gpu=True,
                  debug=False,
-                 if_norm_image=False,
+                 if_norm_image=True,
                  is_gt=False,
                  ):
         '''
@@ -69,7 +68,7 @@ class ComposeAdversarialTransformSolver(object):
         # set up optimization mode:  whether to update transformation parameters or nots
         if optimize_flags is not None:
             assert len(self.chain_of_transforms) == len(
-                optimize_flags), 'must specify each transform is learnable or not'
+                optimize_flags), f'must specify each transform is learnable or not, expect {len(self.chain_of_transforms)} flags, but got {optimize_flags}'
         else:
             if n_iter == 0:
                 optimize_flags = [False] * len(self.chain_of_transforms)
@@ -230,27 +229,26 @@ class ComposeAdversarialTransformSolver(object):
         """
         if chain_of_transforms is None:
             chain_of_transforms = self.chain_of_transforms
+        for tr in chain_of_transforms:
+            tr.eval()
         adv_data = self.forward(data, chain_of_transforms)
         torch.cuda.empty_cache()
         set_grad(model, requires_grad=True)
         old_state = model.training
         model.train()
-        with _disable_tracking_bn_stats(model):
-            adv_output = model(adv_data.detach().clone())
+        adv_output = model(adv_data.detach().clone())
         if self.if_contains_geo_transform(chain_of_transforms):
-            forward_reference = self.predict_forward(
-                init_output.detach(), chain_of_transforms)
-            forward_backward_reference = self.predict_backward(
-                forward_reference, chain_of_transforms)
             masks = torch.ones_like(
-                init_output, dtype=init_output.dtype, device=init_output.device)
-            forward_backward_mask = self.predict_backward(
-                self.predict_forward(masks, chain_of_transforms), chain_of_transforms)
+                init_output, dtype=init_output.dtype, device=init_output.device,requires_grad=False)
+            forward_mask =  self.predict_forward(masks, chain_of_transforms)
+            forward_backward_mask = self.predict_backward(forward_mask, chain_of_transforms)
             warped_back_adv_output = self.predict_backward(
                 adv_output, chain_of_transforms)
             forward_backward_mask[forward_backward_mask != 0] = 1
-            dist = self.loss_fn(pred=warped_back_adv_output, reference=forward_backward_reference.detach(
+            dist = self.loss_fn(pred=warped_back_adv_output, reference=init_output.detach(
             ), mask=forward_backward_mask)
+
+  
         else:
             # no geomtric transformation
             warped_back_adv_output = adv_output
@@ -273,16 +271,16 @@ class ComposeAdversarialTransformSolver(object):
             if self.if_contains_geo_transform(self.chain_of_transforms):
                 warped_back_prediction = self.predict_backward(
                     perturbed_output)
-                forward_reference = self.predict_forward(init_output.detach())
-                forward_backward_reference = self.predict_backward(
-                    forward_reference)
+                # forward_reference = self.predict_forward(init_output.detach())
+                # forward_backward_reference = self.predict_backward(
+                #     forward_reference)
                 masks = torch.ones_like(
-                    init_output, dtype=init_output.dtype, device=init_output.device)
+                    init_output, dtype=init_output.dtype, device=init_output.device,requires_grad=False)
                 forward_backward_mask = self.predict_backward(
                     self.predict_forward(masks))
                 forward_backward_mask[forward_backward_mask != 0] = 1
                 dist = self.loss_fn(
-                    pred=warped_back_prediction, reference=forward_backward_reference, mask=forward_backward_mask)
+                    pred=warped_back_prediction, reference=init_output,mask=forward_backward_mask)
 
             else:
                 dist = self.loss_fn(pred=perturbed_output,
