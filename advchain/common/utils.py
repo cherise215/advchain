@@ -135,7 +135,7 @@ def _disable_tracking_bn_stats(model):
                         #     module.bias.requires_grad_(new_state)
         return old_states
 
-    old_states = switch_attr(model, False)
+    old_states = switch_attr(model, new_state=False)
     yield
     switch_attr(model, hist_states=old_states)
 
