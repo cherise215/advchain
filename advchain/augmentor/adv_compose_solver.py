@@ -12,10 +12,10 @@ class ComposeAdversarialTransformSolver(object):
     apply a chain of transformation
     """
 
-    def __init__(self, chain_of_transforms=[], divergence_types=['kl', 'contour'],
+    def __init__(self, chain_of_transforms=[], divergence_types=['mse', 'contour'],
                  divergence_weights=[1.0, 0.5], use_gpu=True,
                  debug=False,
-                 if_norm_image=True,
+                 if_norm_image=False,
                  is_gt=False,
                  ):
         '''
@@ -36,7 +36,7 @@ class ComposeAdversarialTransformSolver(object):
                              optimize_flags=None,
                              init_output=None,
                              lazy_load=False,
-                             power_iteration='smart',
+                             power_iteration=False,
                              n_iter=1,
                              step_sizes=None,
                              ):
@@ -271,9 +271,6 @@ class ComposeAdversarialTransformSolver(object):
             if self.if_contains_geo_transform(self.chain_of_transforms):
                 warped_back_prediction = self.predict_backward(
                     perturbed_output)
-                # forward_reference = self.predict_forward(init_output.detach())
-                # forward_backward_reference = self.predict_backward(
-                #     forward_reference)
                 masks = torch.ones_like(
                     init_output, dtype=init_output.dtype, device=init_output.device,requires_grad=False)
                 forward_backward_mask = self.predict_backward(
