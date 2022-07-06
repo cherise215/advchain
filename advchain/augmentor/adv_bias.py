@@ -344,7 +344,7 @@ if __name__ == "__main__":
                      'downscale': 2,
                      'data_size': [2, 1, 128, 128],
                      'interpolation_order': 3,
-                     'init_mode': 'gaussian',
+                     'init_mode': 'random',
                      'space': 'log'},
         power_iteration=False,
         debug=True, use_gpu=True)

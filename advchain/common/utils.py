@@ -145,13 +145,17 @@ def set_grad(module, requires_grad=False):
         p.requires_grad = requires_grad
 
 
-def random_chain(alist, *args):
+def random_chain(alist, max_length=None,*args):
     """[select a sub list from  a list and chained them in a random order]
 
     Args:
         list ([type]): [description]
     """
     length = len(alist)
+    if max_length is None:
+        max_length = length
+    else:
+        max_length  = min(max_length,length)
     assert length >= 1, "input list must contains at least one element"
     if length == 1:
         results = [alist]
@@ -164,7 +168,7 @@ def random_chain(alist, *args):
         else:
             return results[0]
 
-    sub_len = np.random.randint(low=1, high=length + 1)
+    sub_len = np.random.randint(low=1, high=max_length+ 1)
 
     r = random.random()            # randomly generating a real in [0,1)
     # lambda : r is an unary function which returns r
