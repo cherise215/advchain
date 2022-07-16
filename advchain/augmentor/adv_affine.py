@@ -249,7 +249,7 @@ class AdvAffine(AdvTransformBase):
             #                     torch.stack([O, O, O, I], dim=-1)], dim=1)
             transformation_matrix = torch.matmul(translation_matrix, torch.matmul(rotation_matrix, scale_matrix))
             transformation_matrix = transformation_matrix[:,:3, :4]
-        print ('transformation matrix size',transformation_matrix.size())
+        # print ('transformation matrix size',transformation_matrix.size())
         if self.use_gpu:
             transformation_matrix.cuda()
         return transformation_matrix
