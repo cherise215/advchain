@@ -40,31 +40,43 @@ def load_image_label(image_path, label_path=None, slice_id=0, crop_size=(192, 19
     support_formats = ['.nrrd', '.nii', '.nii.gz']
     assert Path(image_path).suffix in support_formats, 'only support loading images/labels with extensions:{}.'.format(
         str(support_formats))
-
-    image = sitk.GetArrayFromImage(sitk.ReadImage(image_path))[slice_id]
+    image = sitk.GetArrayFromImage(sitk.ReadImage(image_path))
+    if slice_id >= 0:
+        image =image[slice_id]
+        h_ind = 0
+        w_ind =1
+    else: 
+        h_ind = 1
+        w_ind = 2
     # print('image size:', image.shape)
 
-    h_diff = (image.shape[0] - crop_size[0]) // 2
-    w_diff = (image.shape[1] - crop_size[1]) // 2
-
-    cropped_image = image[h_diff:crop_size[0] +
-                          h_diff, w_diff:crop_size[1] + w_diff]
+    h_diff = (image.shape[h_ind]-crop_size[0])//2
+    w_diff = (image.shape[w_ind]-crop_size[1])//2
+    if slice_id >= 0:
+        cropped_image = image[h_diff:crop_size[0] +
+                            h_diff, w_diff:crop_size[1]+w_diff]
+    else:cropped_image = image[:,h_diff:crop_size[0] +
+                            h_diff, w_diff:crop_size[1]+w_diff]
     # rescale image intensities to 0-1
-    cropped_image = (cropped_image - cropped_image.min()) / \
-        (cropped_image.max() - cropped_image.min() + 1e-10)
+    cropped_image = (cropped_image-cropped_image.min()) / \
+        (cropped_image.max()-cropped_image.min()+1e-10)
 
     if label_path is not None:
-        label = sitk.GetArrayFromImage(sitk.ReadImage(label_path))[slice_id]
+        label = sitk.GetArrayFromImage(sitk.ReadImage(label_path))
+        if slice_id>=0: label = label[slice_id]
         # logging.info('label size:', label.shape)
         assert image.shape == label.shape, "The sizes of the input image and label do not match, image:{}label:{}".format(
             str(image.shape), str(label.shape))
-        cropped_label = label[h_diff:crop_size[0] +
-                              h_diff, w_diff:crop_size[1] + w_diff]
+        if slice_id >= 0:
+            cropped_label = label[h_diff:crop_size[0] +
+                                h_diff, w_diff:crop_size[1]+w_diff]
+        else:
+            cropped_label = label[:,h_diff:crop_size[0] +
+                                h_diff, w_diff:crop_size[1]+w_diff]
 
         return cropped_image, cropped_label
     else:
         return cropped_image
-
 
 def rescale_intensity(data, new_min=0, new_max=1, eps=1e-20):
     '''

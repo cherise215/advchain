@@ -10,7 +10,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def get_base_grid(batch_size, image_height, image_width, use_gpu=True):
+
+def get_base_grid(batch_size, image_height, image_width, image_depth=None, use_gpu=True):
     '''
 
     :param batch_size:
@@ -22,20 +23,42 @@ def get_base_grid(batch_size, image_height, image_width, use_gpu=True):
     grid-wh: 4d grid N*2*H*W
     '''
     # get base grid
-    y_ind, x_ind = torch.meshgrid(
-        [torch.linspace(-1, 1, image_height), torch.linspace(-1, 1, image_width)])  # image space [0-H]
-    x_ind = x_ind.unsqueeze(0).unsqueeze(0)  # 1*1*H*W
-    y_ind = y_ind.unsqueeze(0).unsqueeze(0)  # 1*1*H*W
-    x_ind = x_ind.repeat(batch_size, 1, 1, 1)  # N*1*H*W
-    y_ind = y_ind.repeat(batch_size, 1, 1, 1)
-    x_ind.float()
-    y_ind.float()
-    if use_gpu:
-        x_ind = x_ind.cuda()
-        y_ind = y_ind.cuda()
-    grid_wh = torch.cat((x_ind, y_ind), dim=1)
-    return grid_wh
+    if image_depth is None:
+        y_ind, x_ind = torch.meshgrid(
+            [torch.linspace(-1, 1, image_height), torch.linspace(-1, 1, image_width)],indexing='ij')  # image space [0-H]
+        x_ind = x_ind.unsqueeze(0).unsqueeze(0)  # 1*1*H*W
+        y_ind = y_ind.unsqueeze(0).unsqueeze(0)  # 1*1*H*W
+        x_ind = x_ind.repeat(batch_size, 1, 1, 1)  # N*1*H*W
+        y_ind = y_ind.repeat(batch_size, 1, 1, 1)
+        x_ind.float()
+        y_ind.float()
+        if use_gpu:
+            x_ind = x_ind.cuda()
+            y_ind = y_ind.cuda()
+        grid = torch.cat((x_ind, y_ind), dim=1)
+    else:
+        z_ind,y_ind, x_ind = torch.meshgrid(
+            [torch.linspace(-1, 1, image_height), torch.linspace(-1, 1, image_width),torch.linspace(-1, 1, image_depth)],indexing='ij')  # image space [0-H]
+        
+        x_ind = x_ind.unsqueeze(0).unsqueeze(0)  
+        y_ind = y_ind.unsqueeze(0).unsqueeze(0)  
+        z_ind = z_ind.unsqueeze(0).unsqueeze(0)  
 
+        x_ind = x_ind.repeat(batch_size, 1, 1, 1,1)  # N*1*H*W*D
+        y_ind = y_ind.repeat(batch_size, 1, 1, 1,1)
+        z_ind = z_ind.repeat(batch_size, 1, 1, 1,1)
+
+        x_ind.float()
+        y_ind.float()
+        z_ind.float()
+        if use_gpu:
+            x_ind = x_ind.cuda()
+            y_ind = y_ind.cuda()
+            z_ind = z_ind.cuda()
+
+        grid = torch.cat((x_ind, y_ind,z_ind), dim=1)
+        # print(grid.size())
+    return grid
 
 def calculate_image_diff(images):
     """Difference map of the image.
@@ -45,6 +68,8 @@ def calculate_image_diff(images):
     dy: difference in y-direction: batch*ch*H*W
 
     """
+    assert len(images.size()) == 4 and data.size(
+        1) == 2, 'only support 2D version, and transformation format is NCHW'
     dx = torch.zeros_like(images)
     dy = torch.zeros_like(images)
     # forward difference in first column
@@ -80,21 +105,19 @@ def calculate_jacobian_determinant(data, type='displacement'):
     return determinant
 
 
-def integrate_by_add(basegrid_wh, dxy):
+def integrate_by_add(basegrid, dxy):
     '''
     transform images with the given deformation fields
-    :param basegrid_w:N*1*H*W: horizontal grid
-    :param basegrid_H:N*1*H*W: vertical grid
-    :param dx: dense deformation in horizontal direction:N*1*H*W
-    :param dy: dense deformation in vertical direction:N*1*H*W
+    :param basegrid
+    :param dxy: dense deformation in vertical direction:N*1*H*W
     :return:
     new_grid: the input to the torch grid_sample function.
     torch tensor matrix: N*H*W*2:[dx,dy]
     '''
 
-    basegrid_wh += dxy
-    # basegrid_wh = torch.clamp(basegrid_wh, -1, 1)
-    return basegrid_wh
+    basegrid+= dxy
+    # basegrid = torch.clamp(basegrid, -1, 1)
+    return basegrid
 
 
 def vectorFieldExponentiation2D(duv, nb_steps=8, type='ss', use_gpu=True):
@@ -127,6 +150,38 @@ def vectorFieldExponentiation2D(duv, nb_steps=8, type='ss', use_gpu=True):
     phi = phi-grid_wh
     return phi
 
+def vectorFieldExponentiation3D(duv, nb_steps=8, type='ss', use_gpu=True):
+    '''
+        Computes fast vector field exponentiation as proposed in:
+        https://hal.inria.fr/file/index/docid/349600/filename/DiffeoDemons-NeuroImage08-Vercauteren.pdf
+        :param duv: velocity field in ,y direction : N*2*H*W,
+        :param N: number of steps for integration
+        :return:
+        integrated deformation field at time point 1: N2HW, [dx,dy] OR N2HWD [dx,dy,dz]
+   '''
+
+    # phi(i/2^n)=x+u(x)
+    grid_whd = get_base_grid(batch_size=duv.size(0), image_height=duv.size(2), image_width=duv.size(3),image_depth=duv.size(4),
+                            use_gpu=use_gpu)
+    duv_interval = duv/(2.0 ** nb_steps)
+    while torch.norm(duv_interval)>0.5:
+        nb_steps+=1
+        duv_interval = duv/(2.0 ** nb_steps)
+    phi = integrate_by_add(grid_whd, duv_interval)
+
+    if type == 'ss':
+        for i in range(nb_steps):
+            # e.g. phi(2^i/2^n) =phi(2^(i-1)/2^n) \circ phi((2^(i-1)/2^n))
+            phi = applyComposition3D(phi, phi)
+    else:
+        # euler integration
+        interval_phi = phi
+        for i in range((2.0 ** nb_steps)):
+            # . phi((i+1)/2^n) =phi(1/n) \circ phi(i/n))
+            phi = applyComposition3D(interval_phi, phi)
+    # get the offset flow
+    phi = phi-grid_whd
+    return phi
 
 def applyComposition2D(flow1, flow2):
     """
@@ -140,6 +195,17 @@ def applyComposition2D(flow1, flow2):
         0, 2, 3, 1), padding_mode='border', align_corners=True)  # NCHW
     return interpolated_f1
 
+def applyComposition3D(flow1, flow2):
+    """
+    Compose two deformation fields using linear interpolation.
+    :param flow1 [f]::N*3*H*W*D, [dx,dy, dz] A->B, the left is the 'static' deformation
+    :param flow2 [g]:N*3*H*W*D  [dx,dy, dz] B->C, the right is the 'delta' deformation
+    :return:
+    flow_field/deformation field h= g(f(x)):A->C, [dx,dy, dz], N*3*H*W*D
+    """
+    interpolated_f1 = F.grid_sample(flow1, flow2.permute(
+        0, 2, 3, 4, 1), padding_mode='border', align_corners=True)  # NCHW
+    return interpolated_f1
 
 class AdvMorph(AdvTransformBase):
     """
@@ -147,6 +213,7 @@ class AdvMorph(AdvTransformBase):
     """
 
     def __init__(self,
+                 spatial_dims=2,
                  config_dict={'epsilon': 1.5,
                               'data_size': [10, 1, 8, 8],
                               'vector_size': [4, 4],
@@ -158,12 +225,12 @@ class AdvMorph(AdvTransformBase):
 
 
         '''
-        super(AdvMorph, self).__init__(
+        super(AdvMorph, self).__init__(spatial_dims=spatial_dims,
             config_dict=config_dict, use_gpu=use_gpu, debug=debug)
         self.align_corners = True
         # in the original demons paper, the sigma for gaussian smoothing is recommended to set to 1.
         self.sigma = 1
-        self.gaussian_ks = 3
+        self.gaussian_ks = 5
         self.smooth_iter = 1
         self.num_steps = 8  # internal steps for scaling and squaring intergration
         self.interpolator_mode = 'bilinear'
@@ -187,11 +254,20 @@ class AdvMorph(AdvTransformBase):
         return random transformaion parameters
         '''
         self.init_config(self.config_dict)
-        self.base_grid_wh = get_base_grid(
-            batch_size=self.data_size[0], image_height=self.data_size[2], image_width=self.data_size[3], use_gpu=self.use_gpu)
+        if self.spatial_dims == 2:
+            self.base_grid = get_base_grid(
+                batch_size=self.data_size[0], image_height=self.data_size[2], image_width=self.data_size[3], use_gpu=self.use_gpu)
 
-        vector = self.init_velocity(
-            batch_size=self.data_size[0],  height=self.vector_size[0], width=self.vector_size[1], use_zero=False)
+            vector = self.init_velocity(
+                batch_size=self.data_size[0],  height=self.vector_size[0], width=self.vector_size[1], use_zero=False)
+        elif self.spatial_dims == 3:
+            self.base_grid = get_base_grid(
+                batch_size=self.data_size[0], image_height=self.data_size[2], image_width=self.data_size[3], image_depth = self.data_size[4], use_gpu=self.use_gpu)
+
+            vector = self.init_velocity(
+                batch_size=self.data_size[0],  height=self.vector_size[0], width=self.vector_size[1],depth=self.vector_size[2], use_zero=False)
+        else:
+            raise NotImplementedError('only 2D and 3D are supported')
         self.param = vector
         if self.debug:
             print('init velocity:', vector.size())
@@ -216,6 +292,8 @@ class AdvMorph(AdvTransformBase):
         else:
             dxy, displacement = self.get_deformation_displacement_field(
                 duv=self.epsilon*self.param)
+        dxy = torch.clamp(
+            dxy, -1, 1)
         transformed_image = self.transform(data, dxy, mode=interpolation_mode)
 
         self.diff = transformed_image-data
@@ -235,6 +313,9 @@ class AdvMorph(AdvTransformBase):
         else:
             dxy, displacement = self.get_deformation_displacement_field(
                 duv=-self.epsilon*self.param)
+        
+        # dxy = torch.clamp(
+        #     dxy, -1, 1)
         transformed_image = self.transform(
             data, dxy, mode=self.interpolator_mode)
         if self.debug:
@@ -251,11 +332,13 @@ class AdvMorph(AdvTransformBase):
         if duv is None:
             duv = self.param
         dxy = self.DemonsCompose(
-            duv=duv, init_deformation_dxy=self.base_grid_wh, smooth=True)
-        disp = dxy.permute(0, 2, 3, 1)-self.base_grid_wh.permute(0, 2, 3, 1)
+            duv=duv, init_deformation_dxy=self.base_grid, smooth=True)
+        if self.spatial_dims==2: disp = dxy.permute(0, 2, 3, 1)-self.base_grid.permute(0, 2, 3, 1)
+        elif self.spatial_dims==3: disp = dxy.permute(0, 2, 3, 4, 1)-self.base_grid.permute(0, 2, 3, 4, 1)
+        else: raise NotImplementedError('only 2D and 3D are supported')
         return dxy, disp
 
-    def init_velocity(self, batch_size, height, width, use_zero=False):
+    def init_velocity(self, batch_size, height, width,depth=None, use_zero=False):
         '''
 
         :param batch_size:
@@ -266,16 +349,24 @@ class AdvMorph(AdvTransformBase):
         nd tensor: N*2*H*W, a velocity field/offset field with values between -1 and 1.
         '''
         # offsets = offsets.cuda()
-
-        if not use_zero:
-            duv = (torch.rand(batch_size, 2, height, width,
-                              device=self.device, dtype=torch.float32)*2-1)
-            duv =self.unit_normalize(duv)
+        if self.spatial_dims == 2:
+            if use_zero:
+                velocity = torch.zeros(batch_size, 2, height, width)
+            else:
+                velocity = torch.rand(batch_size, 2, height, width)
+                velocity = velocity*2-1
+        elif self.spatial_dims == 3:
+            if use_zero:
+                velocity = torch.zeros(batch_size, 3, height, width,depth)
+            else:
+                velocity = torch.rand(batch_size, 3, height, width,depth)
+                velocity = velocity*2-1
         else:
-            duv = torch.zeros(batch_size, 2, height, width,
-                              device=self.device, dtype=torch.float32)
-
-        return duv
+            raise NotImplementedError('only 2D and 3D are supported')
+        velocity =self.unit_normalize(velocity)
+        if self.use_gpu:
+            velocity = velocity.cuda()
+        return velocity
 
     def gaussian_smooth(self, inputvector, iter=1, kernel_size=41, sigma=8):
         '''
@@ -294,14 +385,27 @@ class AdvMorph(AdvTransformBase):
     def get_gaussian_kernel(self, kernel_size=5, sigma=8, channels=3):
         # Create a x, y coordinate grid of shape (kernel_size, kernel_size, 2)
         # Use n_sd sigmas
-        if kernel_size < 2 * int(3.5 * sigma) + 1:
-            # odd size so padding results in correct output size
-            kernel_size = 2 * int(3.5 * sigma) + 1
+        if self.spatial_dims == 2:
+            if kernel_size < 2*int(4 * sigma + 0.5)+1: ## change to 4, to make it align with the scipy implementation https://github.com/scipy/scipy/blob/v1.8.1/scipy/ndimage/_filters.py#L264-L347
+                # odd size so padding results in correct output size
+                kernel_size = 2*int(4 * sigma + 0.5)+1
+        elif self.spatial_dims == 3:
+                if kernel_size <= 2*int(4 * sigma + 0.5)+1:
+                    kernel_size = 2*int(4 * sigma + 0.5)+1
 
         x_coord = torch.arange(kernel_size)
-        x_grid = x_coord.repeat(kernel_size).view(kernel_size, kernel_size)
-        y_grid = x_grid.t()
-        xy_grid = torch.stack([x_grid, y_grid], dim=-1).float()
+       
+        if self.spatial_dims == 2:
+            x_grid = x_coord.repeat(kernel_size).view(kernel_size, kernel_size)
+            y_grid = x_grid.t()
+            grid = torch.stack([x_grid, y_grid], dim=-1).float()
+        elif self.spatial_dims == 3:
+            x_grid_2d = x_coord.repeat(kernel_size).view(kernel_size, kernel_size)
+            x_grid = x_coord.repeat(kernel_size*kernel_size).view(kernel_size, kernel_size, kernel_size)
+            y_grid_2d = x_grid_2d.t()           
+            y_grid  = y_grid_2d.repeat(kernel_size,1).view(kernel_size, kernel_size, kernel_size)
+            z_grid = y_grid_2d.repeat(1,kernel_size).view(kernel_size, kernel_size, kernel_size)
+            grid = torch.stack([x_grid, y_grid, z_grid], dim=-1).float()
 
         mean = (kernel_size - 1) / 2.
         variance = sigma ** 2.
@@ -309,24 +413,32 @@ class AdvMorph(AdvTransformBase):
         # Calculate the 2-dimensional gaussian kernel which is
         # the product of two gaussian distributions for two different
         # variables (in this case called x and y)
-        gaussian_kernel = (1. / (2. * math.pi * variance)) * \
-            torch.exp(
-            -torch.sum((xy_grid - mean) ** 2., dim=-1) /
+        gaussian_kernel = torch.exp(
+            -torch.sum((grid - mean) ** 2., dim=-1) /
             (2 * variance)
         )
 
         # Make sure sum of values in gaussian kernel equals 1.
         gaussian_kernel = gaussian_kernel / torch.sum(gaussian_kernel)
 
-        # Reshape to 2d depthwise convolutional weight
-        gaussian_kernel = gaussian_kernel.view(1, 1, kernel_size, kernel_size)
-        gaussian_kernel = gaussian_kernel.repeat(channels, 1, 1, 1)
         pad_size = kernel_size // 2
-        gaussian_filter = nn.Conv2d(in_channels=channels, out_channels=channels,
-                                    kernel_size=kernel_size, groups=channels, dilation=1, stride=1, bias=False,
-                                    padding=pad_size)
 
-        gaussian_filter.weight.data = gaussian_kernel
+
+        if self.spatial_dims == 2:
+            # Reshape to 2d depthwise convolutional weight
+            gaussian_kernel = gaussian_kernel.view(1, 1, kernel_size, kernel_size)
+            gaussian_kernel = gaussian_kernel.repeat(channels, 1, 1, 1)
+            gaussian_filter = nn.Conv2d(in_channels=channels, out_channels=channels,
+                                        kernel_size=kernel_size, groups=channels, dilation=1, stride=1, bias=False,
+                                        padding=pad_size)
+        elif self.spatial_dims == 3:
+            gaussian_kernel = gaussian_kernel.view(1, 1, kernel_size, kernel_size, kernel_size)
+            gaussian_kernel = gaussian_kernel.repeat(channels, 1, 1, 1, 1)
+            gaussian_filter = nn.Conv3d(in_channels=channels, out_channels=channels,
+                                        kernel_size=kernel_size, groups=channels,
+                                        bias=False, padding=pad_size)
+
+
         gaussian_filter.weight.data = gaussian_kernel
         gaussian_filter.weight.requires_grad = False
         if self.use_gpu:
@@ -340,28 +452,36 @@ class AdvMorph(AdvTransformBase):
         :return:
         new composed_deformation_grid N*2*H*W
         '''
+        interpolate_mode = 'bilinear' if self.spatial_dims == 2 else 'trilinear'
         duv = self.gaussian_smooth(
-            duv, iter=self.smooth_iter, kernel_size=self.gaussian_ks, sigma=self.sigma)
-        duv = F.interpolate(duv, size=(self.base_grid_wh.size(
-            2), self.base_grid_wh.size(3)), mode='bilinear', align_corners=False)
+                duv, iter=self.smooth_iter, kernel_size=self.gaussian_ks, sigma=self.sigma)
+        duv = F.interpolate(duv, size=self.base_grid.size()[2:], mode=interpolate_mode, align_corners=False) 
+        if self.spatial_dims == 2:
+            integrated_offsets = vectorFieldExponentiation2D(duv=duv, nb_steps=self.num_steps,
+                                                            type=self.integration_type)
+            if integrated_offsets.size(2) != self.base_grid.size(2) or integrated_offsets.size(3) != self.base_grid.size(3):
+                integrated_offsets = F.interpolate(integrated_offsets, size=(self.base_grid.size(
+                    2), self.base_grid.size(3)), mode=interpolate_mode, align_corners=False)
 
-        integrated_offsets = vectorFieldExponentiation2D(duv=duv, nb_steps=self.num_steps,
-                                                         type=self.integration_type)
+            # update deformation with composition
+            composed_deformation_grid = applyComposition2D(
+                init_deformation_dxy, integrated_offsets + self.base_grid)
+        elif self.spatial_dims == 3:
+            integrated_offsets = vectorFieldExponentiation3D(duv=duv, nb_steps=self.num_steps,
+                                                            type=self.integration_type)
+            if integrated_offsets.size(2) != self.base_grid.size(2) or integrated_offsets.size(3) != self.base_grid.size(3) or integrated_offsets.size(4) != self.base_grid.size(4):
+                integrated_offsets = F.interpolate(integrated_offsets, size=self.base_grid.size()[2:], mode=interpolate_mode, align_corners=False)
 
-        if integrated_offsets.size(2) != self.base_grid_wh.size(2) or integrated_offsets.size(3) != self.base_grid_wh.size(3):
-            integrated_offsets = F.interpolate(integrated_offsets, size=(self.base_grid_wh.size(
-                2), self.base_grid_wh.size(3)), mode='bilinear', align_corners=False)
+            # update deformation with composition
+            composed_deformation_grid = applyComposition3D(
+                init_deformation_dxy, integrated_offsets + self.base_grid)
 
-        # update deformation with composition
-        composed_deformation_grid = applyComposition2D(
-            init_deformation_dxy, integrated_offsets + self.base_grid_wh)
-        # smooth
+        # smooth with gaussian for smoothness regularization
         if smooth:
-            smoothed_offset = self.gaussian_smooth(composed_deformation_grid - self.base_grid_wh, sigma=self.sigma,
+            smoothed_offset = self.gaussian_smooth(composed_deformation_grid - self.base_grid, sigma=self.sigma,
                                                    kernel_size=self.gaussian_ks, iter=1)
-            composed_deformation_grid = smoothed_offset + self.base_grid_wh
-        composed_deformation_grid = torch.clamp(
-            composed_deformation_grid, -1, 1)
+            composed_deformation_grid = smoothed_offset + self.base_grid
+        composed_deformation_grid = torch.clamp(composed_deformation_grid,-1,1)
         return composed_deformation_grid
 
     def train(self):
@@ -402,7 +522,10 @@ class AdvMorph(AdvTransformBase):
         deformed_grid: torch tensor matrix: N*H*W*2
         offsets: N*H*W*2
         '''
-        grid_tensor = deformation_dxy.permute(0, 2, 3, 1)  # N*H*W*2
+        if self.spatial_dims == 2:
+            grid_tensor = deformation_dxy.permute(0, 2, 3, 1)  # N*H*W*2
+        else:
+            grid_tensor = deformation_dxy.permute(0, 2, 3, 4, 1)
         # transform images
         transformed_image = F.grid_sample(
             data, grid_tensor, mode=mode, align_corners=self.align_corners)
@@ -422,15 +545,18 @@ if __name__ == "__main__":
     from advchain.common.utils import check_dir
     dir_path = './log'
     check_dir(dir_path, create=True)
-    images = torch.zeros((10, 1, 128, 128)).float().cuda()
+    images = torch.zeros((10, 1, 128, 128)).float()
+    images = images.cuda()
     images[:, :, ::8, :] = 0.5
     images[:, :, :, ::8] = 0.5
 
     print('input:', images)
-    augmentor = AdvMorph(config_dict={'epsilon': 1.5,
-                                      'xi': 0.5,
+    augmentor = AdvMorph(
+                    spatial_dims=2,
+                    config_dict={'epsilon': 1.5,
+                                      'xi': 0.1,
                                       'data_size': [10, 1, 128, 128],
-                                      'vector_size': [128//8, 128//8],
+                                      'vector_size': [128//16, 128//16],
                                       'interpolator_mode': 'bilinear'
                                       },
 
@@ -451,3 +577,57 @@ if __name__ == "__main__":
     plt.imshow(recovered.cpu().numpy()[0, 0])
 
     plt.savefig(join(dir_path, 'test_morph.png'))
+    
+    ## 3D 
+
+    images_3D = torch.zeros((10, 1, 128, 128,128)).float()
+    images_3D = images_3D.cuda()
+    images_3D[:, :, ::8, ::8,:] = 2*128.0
+    images_3D[:, :, :, ::8,::8] = 2*128.0
+    images_3D[:, :, ::8,:,::8] = 2*128.0
+    images_3D[:,:,0:80,0:80,0:80] = 128.0
+    print('input:', images_3D)
+    augmentor = AdvMorph(
+                    spatial_dims=3,
+                    config_dict={'epsilon': 2.5,
+                                      'xi': 0.1,
+                                      'data_size': [10, 1, 128, 128,128],
+                                      'vector_size': [8,8,8],
+                                      'interpolator_mode': 'bilinear'
+                                      },
+
+                         debug=True, use_gpu=True)
+    augmentor.init_parameters()
+    transformed = augmentor.forward(images_3D.cuda())
+    recovered = augmentor.backward(transformed)
+    error = recovered-images_3D
+    print('sum error', torch.sum(error))
+
+    plt.subplot(331)
+    plt.imshow(images_3D.cpu().numpy()[0, 0,9])
+
+    plt.subplot(332)
+    plt.imshow(transformed.cpu().numpy()[0, 0, 9 ])
+
+    plt.subplot(333)
+    plt.imshow(recovered.cpu().numpy()[0, 0,9])
+
+    plt.subplot(334)
+    plt.imshow(images_3D.cpu().numpy()[0,0,:,9])
+
+    plt.subplot(335)
+    plt.imshow(transformed.cpu().numpy()[0,0, :,9 ])
+
+    plt.subplot(336)
+    plt.imshow(recovered.cpu().numpy()[0,0,:,9,])
+
+    plt.subplot(337)
+    plt.imshow(images_3D.cpu().numpy()[0, 0,:,:,9])
+
+    plt.subplot(338)
+    plt.imshow(transformed.cpu().numpy()[0, 0, :,:,9 ])
+
+    plt.subplot(339)
+    plt.imshow(recovered.cpu().numpy()[0, 0,:,:,9])
+
+    plt.savefig(join(dir_path, 'test_morph_3D.png'))

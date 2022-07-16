@@ -32,6 +32,7 @@ class ComposeAdversarialTransformSolver(object):
         self.is_gt = is_gt
         self.class_weights = None
 
+    
     def adversarial_training(self, data, model,
                              optimize_flags=None,
                              init_output=None,
@@ -144,8 +145,8 @@ class ComposeAdversarialTransformSolver(object):
         tensor: transformed images, NCHW
         '''
         data.requires_grad = False
-        bs, ch, h, w = data.size()
-        flatten_data = data.view(bs, -1)
+        bs= data.size(0)
+        flatten_data = data.reshape(bs, -1)
         original_min = torch.min(flatten_data, dim=1, keepdim=True).values
         original_max = torch.max(flatten_data, dim=1, keepdim=True).values
         t_data = data.detach().clone()
@@ -317,13 +318,14 @@ class ComposeAdversarialTransformSolver(object):
         :param data: N*1*H*W
         :return: data with intensity ranging from 0 to 1
         '''
-        bs, c, h, w = data.size(0), data.size(1), data.size(2), data.size(3)
+        old_size = data.size()
+        bs= data.size(0)
         flatten_data = data.view(bs, -1)
         old_max = torch.max(flatten_data, dim=1, keepdim=True).values
         old_min = torch.min(flatten_data, dim=1, keepdim=True).values
         new_data = (flatten_data - old_min+eps) / \
             (old_max - old_min + eps)*(new_max-new_min)+new_min
-        new_data = new_data.view(bs, c, h, w)
+        new_data = new_data.view(old_size)
         return new_data
 
     def get_init_output(self, model, data):

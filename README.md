@@ -32,7 +32,7 @@ For more details please see our paper on [arXiv](https://arxiv.org/abs/2108.0342
     ```
     pip install -r requirements.txt
     ```
-2.  Play with the provided jupyter notebook to check the enviroments, see `example/adv_chain_data_generation_cardiac.ipynb`
+2.  Play with the provided jupyter notebook to check the enviroments, see `example/adv_chain_data_generation_cardiac.ipynb` to find example usage.
 
 ## Usage
 
@@ -49,6 +49,9 @@ For more details please see our paper on [arXiv](https://arxiv.org/abs/2108.0342
 
 2. Import the library and then add it to your training codebase. Please refer to examples under the `example/` folder for more details.
 
+
+## News:
+[2022-07-16] now support 3D augmentation (beta)! Please see `advchain/example/adv_chain_data_generation_cardiac.ipynb` to find example usage.
 ## Citation
 
 If you find this useful for your work, please consider citing

@@ -34,11 +34,23 @@ def bspline_kernel_2d(sigma=[1, 1], order=3, asTensor=False, dtype=torch.float32
     else:
         return kernel[0, 0, ...].numpy()
 
+def bspline_kernel_3d(sigma=[1, 1, 1], order=2, asTensor=False, dtype=torch.float32, device='gpu'):
+    kernel_ones = torch.ones(1, 1, *sigma)
+    kernel = kernel_ones
+    padding = np.array(sigma) - 1
 
+    for i in range(1, order + 1):
+        # change 2d to 3d
+        kernel = F.conv3d(kernel, kernel_ones, padding=(
+            padding).tolist())/(sigma[0]*sigma[1]*sigma[2])
+    if asTensor:
+        return kernel[0, 0, ...].to(dtype=dtype, device=device)
+    else:
+        return kernel[0, 0, ...].numpy()
 class AdvBias(AdvTransformBase):
     "Adv Bias"
-
     def __init__(self,
+                spatial_dims=2,
                  config_dict={
                      'epsilon': 0.3,  # magnitude, (0,1)
                      # spacings between two control points along the x- and y- direction.
@@ -61,7 +73,7 @@ class AdvBias(AdvTransformBase):
             use_gpu (bool, optional): [description]. Defaults to True.
             debug (bool, optional): [description]. Defaults to False.
         """
-        super(AdvBias, self).__init__(
+        super(AdvBias, self).__init__(spatial_dims=spatial_dims,
             config_dict=config_dict, use_gpu=use_gpu, debug=debug)
         self.param = None
         self.power_iteration = power_iteration
@@ -99,6 +111,10 @@ class AdvBias(AdvTransformBase):
         self._dtype = torch.float32
         self.batch_size = self.data_size[0]
         self._image_size = np.array(self.data_size[2:])
+        assert self._dim ==len(self.spacing), f'control point spacing and image dimension must be {self.spatial_dims} as specified in spatial_dims'
+        if self.spatial_dims is None: self.spatial_dims = self._dim
+        else:  assert self.spatial_dims ==self._dim, f'image dimension must be {self.spatial_dims} as specified in spatial_dims'
+
         self.magnitude = self.epsilon
         assert 0<=self.magnitude<1, 'please set magnitude witihin [0,1)'
         self.order = self.interpolation_order
@@ -262,22 +278,43 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
             stride = self._stride
         if cpoint is None:
             cpoint = self.param
-        bias_field = F.conv_transpose2d(cpoint, interpolation_kernel,
+        if self._dim == 2:
+            bias_field = F.conv_transpose2d(cpoint, interpolation_kernel,
+                                            padding=padding, stride=stride, groups=1)
+            # crop bias
+            bias_field_tmp = bias_field[:, :,
+                                        stride[0] + self._crop_start[0]:-stride[0] - self._crop_end[0],
+                                        stride[1] + self._crop_start[1]:-stride[1] - self._crop_end[1]]
+        else:
+            bias_field = F.conv_transpose3d(cpoint, interpolation_kernel,
                                         padding=padding, stride=stride, groups=1)
-        # crop bias
-        bias_field_tmp = bias_field[:, :,
-                                    stride[0] + self._crop_start[0]:-stride[0] - self._crop_end[0],
-                                    stride[1] + self._crop_start[1]:-stride[1] - self._crop_end[1]]
+            # crop bias
+            bias_field_tmp = bias_field[:, :,
+                                        stride[0] + self._crop_start[0]:-stride[0] - self._crop_end[0],
+                                        stride[1] + self._crop_start[1]:-stride[1] - self._crop_end[1],
+                                        stride[2] + self._crop_start[2]:-stride[2] - self._crop_end[2],
+                                        ]
+            
 
         # recover bias field to original image resolution for efficiency.
         if self.debug:
             print('[bias] after bspline intep, size:', bias_field_tmp.size())
         scale_factor_h = self._image_size[0] / bias_field_tmp.size(2)
         scale_factor_w = self._image_size[1] / bias_field_tmp.size(3)
+        if self._dim==2:
+            if scale_factor_h > 1 or scale_factor_w > 1:
+                upsampler = torch.nn.Upsample(size = (self._image_size[0] , self._image_size[1]), mode='bilinear',
+                                                align_corners=False)
+                diff_bias = upsampler(bias_field_tmp)
 
-        upsampler = torch.nn.Upsample(size = (self._image_size[0] , self._image_size[1]), mode='bilinear',
-                                          align_corners=False)
-        diff_bias = upsampler(bias_field_tmp)
+        elif self._dim==3:
+            scale_factor_d = self._image_size[2] / bias_field_tmp.size(4)
+            if scale_factor_h > 1 or scale_factor_w > 1 or scale_factor_d > 1:
+                upsampler = torch.nn.Upsample(scale_factor=(scale_factor_h, scale_factor_w,scale_factor_d), mode='trilinear',
+                                            align_corners=False)
+                diff_bias = upsampler(bias_field_tmp)
+                # print('recover resolution, size of bias field:', diff_bias.size())
+            
         if self.use_log:
             bias_field = torch.exp(diff_bias)
         else:
@@ -312,8 +349,11 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         :param spacing tuple of int: spacing between control points along h and w.
         :return:  kernel matrix
         '''
-        self._kernel = bspline_kernel_2d(
-            spacing, order=order, asTensor=True, dtype=self._dtype, device=self._device)
+        if self._dim == 2:
+            
+            self._kernel = bspline_kernel_2d(spacing, order=order, asTensor=True, dtype=self._dtype, device=self._device)
+        elif self._dim == 3:
+            self._kernel = bspline_kernel_3d(spacing, order=order, asTensor=True, dtype=self._dtype, device=self._device)
         self._padding = (np.array(self._kernel.size()) - 1) / 2
         self._padding = self._padding.astype(dtype=int).tolist()
         self._kernel.unsqueeze_(0).unsqueeze_(0)
@@ -329,7 +369,9 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
 
 
 if __name__ == "__main__":
+    import os
     import matplotlib.pyplot as plt
+    if not os.path.exists('./log'): os.makedirs('./log')
     images = torch.ones(2, 1, 128, 128).cuda()
     images[:, :, ::2, ::2] = 2.0
     images[:, :, ::3, ::3] = 3.0
@@ -361,4 +403,57 @@ if __name__ == "__main__":
 
     plt.subplot(133)
     plt.imshow((transformed/images).detach().cpu().numpy()[0, 0])
-    plt.savefig('./result/log/debug/test_bias.png')
+    plt.savefig('./log/test_bias.png')
+
+
+    ## test 3D
+    images = 128*torch.randn(2, 1, 128, 128, 128).cuda()
+    images[:, :, 10:120, 10:120, 10:120] =256
+    images =images.clone()
+
+    images = images.float()
+    images.requires_grad = False
+    print('input:', images.size())
+    augmentor = AdvBias(
+        spatial_dims =3,
+        config_dict={'epsilon': 0.3,
+                     'control_point_spacing': [64, 64, 64],
+                     'downscale': 4,  # increase the downscale factor to save interpolation time
+                     'data_size': [2, 1, 128, 128, 128],
+                     'interpolation_order': 3,
+                     'init_mode': 'random',
+                     'space': 'log'},
+        power_iteration=False,
+        debug=True, use_gpu=True)
+
+    # perform random bias field
+    augmentor.init_parameters()
+    transformed = augmentor.forward(images)
+    error = transformed-images
+    print('sum error', torch.sum(error))
+
+    plt.subplot(231)
+    plt.imshow(images.detach().cpu().numpy()[0, 0, 0])
+    plt.title("Input slice: 0 ")
+
+    plt.subplot(232)
+    plt.imshow(transformed.detach().cpu().numpy()[0, 0, 0])
+    plt.title("Augmented: 0")
+
+    plt.subplot(233)
+    plt.imshow((augmentor.bias_field.detach()).detach().cpu().numpy()[0, 0, 0])
+    plt.title("Bias Field: 0")
+
+    plt.subplot(234)
+    plt.imshow(images.detach().cpu().numpy()[0, 0, 28])
+    plt.title("Input slice: 28")
+
+    plt.subplot(235)
+    plt.imshow(transformed.detach().cpu().numpy()[0, 0, 28])
+    plt.title("Augmented: 28")
+
+    plt.subplot(236)
+    plt.imshow(augmentor.bias_field.detach().cpu().numpy()[0, 0, 28])
+    plt.title("Bias field: 28")
+
+    plt.savefig('./log/test_bias_3D.png')

@@ -9,7 +9,9 @@ class AdvTransformBase(object):
     """
 
     def __init__(self,
+                spatial_dims=2,
                  config_dict={
+                    "data_size":[1,1,1,1]
                  },
                  use_gpu=True,
                  debug=False):
@@ -17,8 +19,11 @@ class AdvTransformBase(object):
 
 
         '''
-
+        self.spatial_dims = spatial_dims
+        assert self.spatial_dims == 2 or self.spatial_dims==3, 'only support 2D/3D'
         self.config_dict = config_dict
+        data_dim  = len(config_dict["data_size"])
+        assert data_dim==self.spatial_dims+2, f"check data size in the config file, should be {self.spatial_dims+2}D, but got {data_dim}D"
         self.param = None
         self.is_training = False
         self.use_gpu = use_gpu

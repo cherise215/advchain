@@ -28,13 +28,19 @@ def calc_segmentation_consistency(output, reference, divergence_types=['kl', 'co
         raise NotImplemented
     dist = 0.
     num_classes = reference.size(1)
+    spatial_dims = len(output.size())-2
+    assert spatial_dims == 2 or spatial_dims == 3, 'only support 2d or 3d segmentation'
+    assert len(output.size()) == len(reference.size()), 'scales and weights should have the same length'
     if mask is None:
         # apply masks so that only gradients on non-zero regions  will be backpropagated.
         mask = torch.ones_like(output).float().to(reference.device)
     for scale in scales:
         if scale > 0:
-            output_reference = torch.nn.AvgPool2d(2 ** scale)(reference)
-            output_new = torch.nn.AvgPool2d(2 ** scale)(output)
+            if spatial_dims == 2:
+               down_sample_pool_fn  = torch.nn.AvgPool2d
+            else:down_sample_pool_fn  = torch.nn.AvgPool3d
+            output_reference = down_sample_pool_fn(2 ** scale)(reference)
+            output_new = down_sample_pool_fn(2 ** scale)(output)
         else:
             output_reference = reference
             output_new = output
@@ -47,16 +53,15 @@ def calc_segmentation_consistency(output, reference, divergence_types=['kl', 'co
                 loss = kl_divergence(
                     pred=output_new, reference=output_reference, mask=mask, is_gt=is_gt)
             elif divergence_type == 'mse':
-                n, h, w = output_new.size(
-                    0), output_new.size(2), output_new.size(3)
+                
                 if not is_gt:
                     target_pred = torch.softmax(output_reference, dim=1)
                 else:
                     target_pred = output_reference
                 input_pred = torch.softmax(output_new, dim=1)
-                loss = torch.nn.MSELoss(reduction='sum')(
+                loss = torch.nn.MSELoss(reduction='mean')(
                     target=target_pred*mask, input=input_pred*mask)
-                loss = loss/(n*h*w)
+                loss = loss/(torch.numel(target_pred)/num_classes)
             elif divergence_type == 'contour':  # contour-based loss
                 if not is_gt:
                     target_pred = torch.softmax(output_reference, dim=1)
@@ -104,11 +109,12 @@ def contour_loss(input, target,  use_gpu=True, ignore_background=True, one_hot_t
     '''
     n, num_classes, h, w = input.size(0), input.size(
         1), input.size(2), input.size(3)
+    spatial_dims = len(input.size()) - 2
     if one_hot_target:
         onehot_mapper = One_Hot(depth=num_classes, use_gpu=use_gpu)
         target = target.long()
         onehot_target = onehot_mapper(target).contiguous().view(
-            input.size(0), num_classes, input.size(2), input.size(3))
+             input.size())
     else:
         onehot_target = target
     assert onehot_target.size() == input.size(), 'pred size: {} must match target size: {}'.format(
@@ -129,47 +135,92 @@ def contour_loss(input, target,  use_gpu=True, ignore_background=True, one_hot_t
     else:
         target_object_maps = onehot_target
         object_classes = num_classes
+    ## 2D 
+    if spatial_dims == 2:
+        x_filter = np.array([[1, 0, -1],
+                            [2, 0, -2],
+                            [1, 0, -1]]).reshape(1, 1, 3, 3)
 
-    x_filter = np.array([[1, 0, -1],
-                         [2, 0, -2],
-                         [1, 0, -1]]).reshape(1, 1, 3, 3)
+        x_filter = np.repeat(x_filter, axis=1, repeats=object_classes)
+        x_filter = np.repeat(x_filter, axis=0, repeats=object_classes)
+        conv_x = nn.Conv2d(in_channels=object_classes, out_channels=object_classes, kernel_size=3, stride=1, padding=1,
+                        dilation=1, bias=False)
 
-    x_filter = np.repeat(x_filter, axis=1, repeats=object_classes)
-    x_filter = np.repeat(x_filter, axis=0, repeats=object_classes)
-    conv_x = nn.Conv2d(in_channels=object_classes, out_channels=object_classes, kernel_size=3, stride=1, padding=1,
-                       dilation=1, bias=False)
+        conv_x.weight = nn.Parameter(torch.from_numpy(x_filter).float())
 
-    conv_x.weight = nn.Parameter(torch.from_numpy(x_filter).float())
+        y_filter = np.array([[1, 2, 1],
+                            [0, 0, 0],
+                            [-1, -2, -1]]).reshape(1, 1, 3, 3)
+        y_filter = np.repeat(y_filter, axis=1, repeats=object_classes)
+        y_filter = np.repeat(y_filter, axis=0, repeats=object_classes)
+        conv_y = nn.Conv2d(in_channels=object_classes, out_channels=object_classes, kernel_size=3, stride=1, padding=1,
+                        bias=False)
+        conv_y.weight = nn.Parameter(torch.from_numpy(y_filter).float())
+        if use_gpu:
+            conv_y = conv_y.cuda()
+            conv_x = conv_x.cuda()
+        for param in conv_y.parameters():
+            param.requires_grad = False
+        for param in conv_x.parameters():
+            param.requires_grad = False
+    elif spatial_dims == 3:
+        hx, hy, hz = np.array([[1, 2, 1]]), np.array([[1, 2, 1]]), np.array([[1, 2, 1]])
+        hpx, hpy, hpz = np.array([[1, 0, -1]]), np.array([[1, 0, -1]]), np.array([[1, 0, -1]])
+        # make 3D kernel
+        gx = (hpx*hy.T).reshape(3,3,1)*hz ## 3x3*3 matrix
+        gz = (hx*hpy.T).reshape(3,3,1)*hz
+        gz = (hx*hy.T).reshape(3,3,1)*hpz
+        gx = gx.reshape(1,1,3,3,3)
+        gy = gx.reshape(1,1,3,3,3)
+        gz = gz.reshape(1,1,3,3,3)
+        gx.repeat(object_classes, axis=0)
+        gy.repeat(object_classes, axis=0)
+        gz.repeat(object_classes, axis=0)
+        gx = gx.repeat(object_classes, axis=1)
+        gy = gy.repeat(object_classes, axis=1)
+        gz = gz.repeat(object_classes, axis=1)
+        conv_x = nn.Conv3d(in_channels=object_classes, out_channels=object_classes, kernel_size=3, stride=1, padding=1,
+                        dilation=1, bias=False)
 
-    y_filter = np.array([[1, 2, 1],
-                         [0, 0, 0],
-                         [-1, -2, -1]]).reshape(1, 1, 3, 3)
-    y_filter = np.repeat(y_filter, axis=1, repeats=object_classes)
-    y_filter = np.repeat(y_filter, axis=0, repeats=object_classes)
-    conv_y = nn.Conv2d(in_channels=object_classes, out_channels=object_classes, kernel_size=3, stride=1, padding=1,
-                       bias=False)
-    conv_y.weight = nn.Parameter(torch.from_numpy(y_filter).float())
-
-    if use_gpu:
-        conv_y = conv_y.cuda()
-        conv_x = conv_x.cuda()
-    for param in conv_y.parameters():
-        param.requires_grad = False
-    for param in conv_x.parameters():
-        param.requires_grad = False
-
+        conv_y = nn.Conv3d(in_channels=object_classes, out_channels=object_classes, kernel_size=3, stride=1, padding=1,
+                        dilation=1, bias=False)
+        conv_z = nn.Conv3d(in_channels=object_classes, out_channels=object_classes, kernel_size=3, stride=1, padding=1,
+                        dilation=1, bias=False)
+        conv_x.weight = nn.Parameter(torch.from_numpy(gx).float())
+        conv_y.weight = nn.Parameter(torch.from_numpy(gy).float())
+        conv_z.weight = nn.Parameter(torch.from_numpy(gz).float())
+        if use_gpu:
+            conv_x = conv_x.cuda()
+            conv_y = conv_y.cuda()
+            conv_z = conv_z.cuda()
+        for param in conv_x.parameters():
+            param.requires_grad = False
+        for param in conv_y.parameters():
+            param.requires_grad = False
+        for param in conv_z.parameters():
+            param.requires_grad = False
+    else: raise NotImplementedError
     g_x_pred = conv_x(input)*mask[:, :object_classes]
     g_y_pred = conv_y(input)*mask[:, :object_classes]
     g_y_truth = conv_y(target_object_maps)*mask[:, :object_classes]
     g_x_truth = conv_x(target_object_maps)*mask[:, :object_classes]
+
     # mse loss
-    loss = 0.5*(torch.nn.MSELoss(reduction='mean')(input=g_x_pred, target=g_x_truth) +
-                torch.nn.MSELoss(reduction='mean')(input=g_y_pred, target=g_y_truth))
+    if spatial_dims == 2:
+        loss = 0.5*(torch.nn.MSELoss(reduction='mean')(input=g_x_pred, target=g_x_truth) +
+                    torch.nn.MSELoss(reduction='mean')(input=g_y_pred, target=g_y_truth))
+    elif spatial_dims == 3:
+        g_z_pred = conv_z(input)*mask[:, :object_classes]
+        g_z_truth = conv_z(target_object_maps)*mask[:, :object_classes]
+        loss = 1/3*(torch.nn.MSELoss(reduction='mean')(input=g_x_pred, target=g_x_truth) +
+                    torch.nn.MSELoss(reduction='mean')(input=g_y_pred, target=g_y_truth)+ 
+                    torch.nn.MSELoss(reduction='mean')(input=g_z_pred, target=g_z_truth))
     return loss
 
 
 def kl_divergence(reference, pred, mask=None, is_gt=False):
     '''
+    support 2D and 3D
     calc the kl div distance between two outputs p and q from a network/model: p(y1|x1).p(y2|x2).
     :param reference p: directly output from network using origin input without softmax
     :param output q: approximate output: directly output from network using perturbed input without softmax
@@ -190,8 +241,8 @@ def kl_divergence(reference, pred, mask=None, is_gt=False):
         log_p = torch.log(p)  # avoid NAN when log(0)
     cls_plogp = mask*(p * log_p)
     cls_plogq = mask*(p * F.log_softmax(q, dim=1))
-    plogp = torch.sum(cls_plogp, dim=1, keepdim=True)
-    plogq = torch.sum(cls_plogq, dim=1, keepdim=True)
+    plogp = torch.sum(cls_plogp, dim=1, keepdim=False)
+    plogq = torch.sum(cls_plogq, dim=1, keepdim=False)
     kl_loss = torch.mean(plogp - plogq)
     return kl_loss
 

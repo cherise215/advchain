@@ -12,7 +12,8 @@ class AdvNoise(AdvTransformBase):
     """
 
     def __init__(self,
-                 config_dict={'epsilon': 0.1,
+                spatial_dims=2,
+                config_dict={'epsilon': 0.1,
                               'xi': 1e-6,
                               'data_size': [10, 1, 8, 8]
                               },
@@ -22,7 +23,7 @@ class AdvNoise(AdvTransformBase):
         initialization
 
         '''
-        super(AdvNoise, self).__init__(
+        super(AdvNoise, self).__init__(spatial_dims=spatial_dims,
             config_dict=config_dict, use_gpu=use_gpu, debug=debug)
         self.power_iteration = power_iteration
 
@@ -133,3 +134,19 @@ if __name__ == "__main__":
     plt.imshow(recovered.cpu().numpy()[0, 0])
 
     plt.savefig(join(dir_path, 'test_noise.png'))
+    
+
+    # 3D 
+    images = torch.zeros((10, 1, 8, 8,8)).cuda()
+
+    augmentor = AdvNoise(
+                        spatial_dims=3,
+                        config_dict={'epsilon': 0.1,
+                                                'xi': 1e-6,
+                                                'data_size': [10, 1, 8, 8,8]
+                                                },
+                 power_iteration=False,
+                 use_gpu=True, debug=False)
+
+    augmentor.init_parameters()
+    augmented_image = augmentor.forward(images)

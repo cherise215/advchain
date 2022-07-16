@@ -16,14 +16,15 @@ class AdvAffine(AdvTransformBase):
     """
 
     def __init__(self,
+                 spatial_dims=2,
                  config_dict={
                      'rot': 30.0 / 180.0,
                      'scale_x': 0.2,
                      'scale_y': 0.2,
                      'shift_x': 0.1,
                      'shift_y': 0.1,
-                     'shear_x': 0.,
-                     'shear_y': 0.,
+                    #  'shear_x': 0.,
+                    #  'shear_y': 0.,
                      'data_size': [1, 1, 8, 8],
                      'forward_interp': 'bilinear',
                      'backward_interp': 'bilinear'
@@ -31,9 +32,35 @@ class AdvAffine(AdvTransformBase):
                  power_iteration=False,
                  use_gpu=True, debug=False):
         '''
-        initialization
+        initialization,
+
+        for 3D, the default config should be like:
+        config_dict={
+            ## rotation in radians about different axis
+            'rot_x': 0.0,
+            'rot_y':0.0,
+            'rot_z':0.0,
+
+            ## scaling in radians along different axis
+            'scale_x': 0.0,
+            'scale_y': 0.0,
+            'scale_z': 0.0,
+            ## shift in x,y, z direction
+            'shift_x': 0.,
+            'shift_y': 0.,
+            'shift_z': 0.,
+            ## shearing functions (not implemented yet)
+            # 'shear_z_x': 0.,
+            # 'shear_z_y': 0.,
+            # 'shear_x_z': 0.,
+            # 'shear_y_z': 0.,
+
+            'data_size': [*images_3D.size()],
+            'forward_interp': 'bilinear',
+            'backward_interp': 'bilinear'
+        }, debug=True)
         '''
-        super(AdvAffine, self).__init__(
+        super(AdvAffine, self).__init__(spatial_dims=spatial_dims,
             config_dict=config_dict, use_gpu=use_gpu, debug=debug)
         self.power_iteration = power_iteration
 
@@ -41,13 +68,29 @@ class AdvAffine(AdvTransformBase):
         '''
         initialize a set of transformation configuration parameters
         '''
-        self.rot_ratio = config_dict['rot']
-        self.translation_x = config_dict['shift_x']
-        self.translation_y = config_dict['shift_y']
-        self.scale_x = config_dict['scale_x']
-        self.scale_y = config_dict['scale_y']
-        self.shear_x = config_dict['shear_x']
-        self.shear_y = config_dict['shear_y']
+        if self.spatial_dims <=3:
+            self.translation_x = config_dict['shift_x']
+            self.translation_y = config_dict['shift_y']
+            self.scale_x = config_dict['scale_x']
+            self.scale_y = config_dict['scale_y']
+            if self.spatial_dims == 2:
+                self.rot_ratio = config_dict['rot']
+                # if 'shear_x' in config_dict.keys():  self.shear_x = config_dict['shear_x']
+                # else: self.shear_x = 0
+                # if 'shear_y' in config_dict.keys():  self.shear_y = config_dict['shear_y']
+                # else: self.shear_y = 0
+        if self.spatial_dims == 3:
+            self.rot_x = config_dict['rot_x']
+            self.rot_y = config_dict['rot_y']
+            self.rot_z = config_dict['rot_z']
+
+            self.scale_z = config_dict['scale_z']
+            self.translation_z= config_dict['shift_z'] 
+            # self.shear_z_x= config_dict['shear_z_x']            
+            # self.shear_z_y = config_dict['shear_z_y']
+            # self.shear_x_z = config_dict['shear_x_z']
+            # self.shear_y_z = config_dict['shear_y_z']
+
         self.xi = 1e-6
         self.data_size = config_dict['data_size']
         self.forward_interp = config_dict['forward_interp']
@@ -60,6 +103,7 @@ class AdvAffine(AdvTransformBase):
         '''
         self.init_config(self.config_dict)
         batch_size = self.data_size[0]
+        self.batch_size = batch_size
         affine_tensor = self.draw_random_affine_tensor_list(
             batch_size=batch_size)
         self.param = affine_tensor
@@ -104,12 +148,16 @@ class AdvAffine(AdvTransformBase):
         return warped_back_output
 
     def draw_random_affine_tensor_list(self, batch_size, identity_init=False):
+        if self.spatial_dims == 2:
+                num_params = 5
+        elif self.spatial_dims == 3:
+                num_params = 9
         if identity_init:
             affine_tensor = torch.zeros(
-                batch_size, 7, device=self.device, dtype=torch.float32)
+                batch_size, num_params, device=self.device, dtype=torch.float32)
         else:
             ## initialization [-1,1]
-            affine_tensor = (2 * torch.rand(batch_size, 7,
+            affine_tensor = (2 * torch.rand(batch_size, num_params,
                                             dtype=torch.float32, device=self.device) - 1)
             affine_tensor = torch.nn.Hardtanh()(affine_tensor)
 
@@ -144,21 +192,64 @@ class AdvAffine(AdvTransformBase):
     def gen_batch_affine_matrix(self, affine_tensors):
         '''
         given affine parameters, gen batch-wise affine_matrix [bs*2*3]
-        :param affine_tensors:N*7 , [rot_radius, scalex, scale_y, tx,ty,shear_x,shear_y]
+        :param affine_tensors:N*7 for 2D or N*10 for 3D , [rot_radius, scalex, scale_y, tx,ty,shear_x,shear_y],[rot_radius, scalex, scale_y, scale_z, tx,ty,tz, shear_x,shear_y, shear_z]
         :return:
          affine_matrix [bs*2*3]
         '''
         # restrict transformations between [-1,1]
         affine_tensors = torch.nn.Hardtanh()(affine_tensors)
-        rot_radius, scalex, scaley, tx, ty, shear_x, shear_y = affine_tensors[:, 0], affine_tensors[:,
-                                                                                                    1], affine_tensors[:, 2], affine_tensors[:, 3], affine_tensors[:, 4], affine_tensors[:, 5], affine_tensors[:, 6]
-        transformation_matrix = torch.stack([
-            torch.stack([(1 + scalex * self.scale_x) * (torch.cos(rot_radius * self.rot_ratio * math.pi)) + self.shear_y * shear_y * (1 + scaley *
-                                                                                                                                      self.scale_y) * (-torch.sin(rot_radius * self.rot_ratio * math.pi)), shear_x * self.shear_x * (1 + scalex * self.scale_x) * (torch.cos(rot_radius * self.rot_ratio * math.pi)) + (1 + scaley * self.scale_y) * (-torch.sin(rot_radius * self.rot_ratio * math.pi)), tx * self.translation_x], dim=-1),
-            torch.stack([(1 + scalex * self.scale_x) * (torch.sin(rot_radius * self.rot_ratio * math.pi)) + self.shear_y * shear_y * (1 + scaley * self.scale_y) * (torch.cos(rot_radius * self.rot_ratio * math.pi)),
-                         (shear_x * self.shear_x) * (1 + scalex * self.scale_x) * (torch.sin(rot_radius * self.rot_ratio * math.pi)) + (1 + scaley * self.scale_y) * (torch.cos(rot_radius * self.rot_ratio * math.pi)), ty * self.translation_y], dim=-1)
+        if self.spatial_dims == 2:
+            rot_radius, scalex, scaley, tx, ty = affine_tensors[:, 0], affine_tensors[:, 1], affine_tensors[:, 2], affine_tensors[:, 3], affine_tensors[:, 4]
+            transformation_matrix = torch.stack([
+            torch.stack([(1+scalex*self.scale_x) * (torch.cos(rot_radius*self.rot_ratio*math.pi)), (1+scaley *
+                                                                                                    self.scale_y) * (-torch.sin(rot_radius*self.rot_ratio*math.pi)), tx*self.translation_x], dim=-1),
+            torch.stack([(1+scalex*self.scale_x) * (torch.sin(rot_radius*self.rot_ratio*math.pi)), (1+scaley *
+                                                                                                    self.scale_y) * (torch.cos(rot_radius*self.rot_ratio*math.pi)), ty*self.translation_y], dim=-1)
         ], dim=1)
+        elif self.spatial_dims == 3:
+             ## rotation 3D matrix
+            (rot_x, rot_y,rot_z, scalex, scaley, scalez,tx, ty,tz) = (affine_tensors[:, 0], affine_tensors[:,1], affine_tensors[:, 2], 
+                                                                                                        affine_tensors[:, 3], 
+                                                                                                        affine_tensors[:, 4],
+                                                                                                         affine_tensors[:, 5], 
+                                                                                                         affine_tensors[:, 6],
+                                                                                                         affine_tensors[:, 7],
+                                                                                                         affine_tensors[:, 8])
 
+                                                                                                         
+            batch_size = self.batch_size
+            device = self.device
+            O = torch.zeros(batch_size, dtype=torch.float32).to(device)
+            I = torch.ones(batch_size, dtype=torch.float32).to(device)        
+            translation_matrix =torch.stack(
+                               [torch.stack([I, O, O, tx*self.translation_x], dim=-1),
+                                torch.stack([O, I, O, ty*self.translation_y], dim=-1),
+                                torch.stack([O, O, I, tz*self.translation_z], dim=-1),
+                                torch.stack([O, O, O, I], dim=-1)], dim=1)
+            scale_matrix =torch.stack(
+                               [torch.stack([(1 + scalex * self.scale_x), O, O,O], dim=-1),
+                                torch.stack([O, (1 + scaley * self.scale_y), O, O], dim=-1),
+                                torch.stack([O, O, (1 + scalez * self.scale_z), O], dim=-1),
+                                torch.stack([O, O, O, I], dim=-1)], dim=1)
+            ## rotation 3D matrix: https://en.wikipedia.org/wiki/Rotation_formalisms_in_three_dimensions: Euler angles (z-y′-x″ intrinsic) → rotation matrix
+            phi = rot_x*self.rot_x*math.pi
+            theta = rot_y*self.rot_y*math.pi
+            psi = rot_z*self.rot_z*math.pi
+
+            rotation_matrix =torch.stack([
+                                torch.stack([torch.cos(theta)*torch.cos(psi), -torch.cos(phi)*torch.sin(psi)+torch.sin(phi)*torch.sin(theta)*torch.cos(psi),torch.sin(phi)*torch.sin(psi)+torch.cos(phi)*torch.sin(theta)*torch.cos(psi) , O], dim=-1),
+                                torch.stack([torch.cos(theta)*torch.sin(psi), torch.cos(phi)*torch.cos(psi)+torch.sin(phi)*torch.sin(theta)*torch.sin(psi),-torch.sin(phi)*torch.cos(psi)+torch.cos(phi)*torch.sin(theta)*torch.sin(psi), O], dim=-1),
+                                torch.stack([-torch.sin(theta), torch.sin(phi)*torch.cos(theta) , torch.cos(phi)*torch.cos(theta) , O], dim=-1),
+                                torch.stack([O, O, O, I], dim=-1)], dim=1)
+            # ## reference: https://www.fil.ion.ucl.ac.uk/spm/doc/books/hbf2/pdfs/Ch2.pdf
+            # shear_matrix =torch.stack(
+            #                    [torch.stack([I, (shear_x * self.shear_a), (shear_y * self.shear_b) ,O], dim=-1),
+            #                     torch.stack([O, I,  (shear_z * self.shear_c), O], dim=-1),
+            #                     torch.stack([O, O, I, O], dim=-1),
+            #                     torch.stack([O, O, O, I], dim=-1)], dim=1)
+            transformation_matrix = torch.matmul(translation_matrix, torch.matmul(rotation_matrix, scale_matrix))
+            transformation_matrix = transformation_matrix[:,:3, :4]
+        print ('transformation matrix size',transformation_matrix.size())
         if self.use_gpu:
             transformation_matrix.cuda()
         return transformation_matrix
@@ -166,9 +257,15 @@ class AdvAffine(AdvTransformBase):
     def make_batch_eye_matrix(self, batch_size, device):
         O = torch.zeros(batch_size, dtype=torch.float32).to(device)
         I = torch.ones(batch_size, dtype=torch.float32).to(device)
-        eyeMtrx = torch.stack([torch.stack([I, O, O], dim=-1),
-                               torch.stack([O, I, O], dim=-1),
-                               torch.stack([O, O, I], dim=-1)], dim=1)
+        if self.spatial_dims ==2:
+            eyeMtrx = torch.stack([torch.stack([I, O, O], dim=-1),
+                                torch.stack([O, I, O], dim=-1),
+                                torch.stack([O, O, I], dim=-1)], dim=1)
+        elif self.spatial_dims ==3:
+            eyeMtrx = torch.stack([torch.stack([I, O, O, O], dim=-1),
+                                torch.stack([O, I, O, O], dim=-1),
+                                torch.stack([O, O, I, O], dim=-1),
+                                torch.stack([O, O, O, I], dim=-1)], dim=1)
         return eyeMtrx
 
     def transform(self, data, affine_matrix, interp='bilinear', padding_mode='zeros'):
@@ -184,9 +281,9 @@ class AdvAffine(AdvTransformBase):
     def get_inverse_matrix(self, affine_matrix):
         homo_matrix = self.make_batch_eye_matrix(
             batch_size=affine_matrix.size(0), device=affine_matrix.device)
-        homo_matrix[:, :2] = affine_matrix
+        homo_matrix[:, :self.spatial_dims] = affine_matrix
         inverse_matrix = homo_matrix.inverse()
-        inverse_matrix = inverse_matrix[:, :2, :]
+        inverse_matrix = inverse_matrix[:, :self.spatial_dims, :]
         if self.debug:
             logger.info('inverse matrix', inverse_matrix.size())
         return inverse_matrix
@@ -209,15 +306,16 @@ if __name__ == "__main__":
     images[:, :, 20:50, 20:50] = 1.0
     print('input:', images)
     augmentor = AdvAffine(
+        spatial_dims=2,
         config_dict={
-            'rot': 0,
-            'scale_x': 0.,
-            'scale_y': 0.,
-            'shift_x': 0.,
-            'shift_y': 0.,
-            'shear_x': 0.,
-            'shear_y': 0.,
-            'data_size': [1, 1, 8, 8],
+            'rot': 0.2,
+            'scale_x': 0.1,
+            'scale_y': 0.1,
+            'shift_x': 0.2,
+            'shift_y': 0.2,
+            'shear_x': 0.2,
+            'shear_y': 0.2,
+            'data_size': [*images.size()],
             'forward_interp': 'bilinear',
             'backward_interp': 'bilinear'
         }, debug=True)
@@ -246,4 +344,76 @@ if __name__ == "__main__":
     # plt.imshow(mask.cpu().numpy()[0,0])
     plt.savefig(join(dir_path, 'test_affine.png'))
 
-    # adv test
+    # adv test three D
+
+    images_3D = torch.zeros(2, 1, 20,20 , 20).cuda()
+    images_3D[:, :, 0:10,  0:10, 0:10] =1.0
+    images_3D =images_3D.clone()
+
+    images_3D = images_3D.float().clone()
+    images_3D.requires_grad = False
+    print('input:', images_3D.size())
+    augmentor = AdvAffine(
+        spatial_dims=3,
+        config_dict={
+            'rot_x': 0.,
+            'rot_y': 0.,
+            'rot_z': 0.2,
+
+            'scale_x': 0.0,
+            'scale_y': 0.0,
+            'scale_z': 0.0,
+
+            'shift_x': 0.,
+            'shift_y': 0.,
+            'shift_z': 0.,
+
+            # 'shear_a': 0.,
+            # 'shear_b': 0.,
+            # 'shear_c': 0.,
+
+            'data_size': [*images_3D.size()],
+            'forward_interp': 'bilinear',
+            'backward_interp': 'bilinear'
+        }, debug=True)
+    augmentor.init_parameters()
+    transformed = augmentor.forward(images_3D)
+    recovered = augmentor.backward(transformed)
+    mask = torch.ones_like(images_3D)
+    with torch.no_grad():
+        mask = augmentor.backward(augmentor.forward(mask))
+
+    mask[mask == 1] = True
+    mask[mask != 1] = False
+    print('mask', mask)
+    error = recovered - images_3D
+    print('sum error', torch.sum(error))
+    plt.subplot(331)
+    plt.imshow(images_3D.cpu().numpy()[0, 0,0])
+
+    plt.subplot(332)
+    plt.imshow(transformed.cpu().numpy()[0, 0, 0 ])
+
+    plt.subplot(333)
+    plt.imshow(recovered.cpu().numpy()[0, 0,0])
+
+    plt.subplot(334)
+    plt.imshow(images_3D.cpu().numpy()[0,0,:,0])
+
+    plt.subplot(335)
+    plt.imshow(transformed.cpu().numpy()[0,0, :,0 ])
+
+    plt.subplot(336)
+    plt.imshow(recovered.cpu().numpy()[0,0,:,0,])
+
+    plt.subplot(337)
+    plt.imshow(images_3D.cpu().numpy()[0, 0,:,:,0])
+
+    plt.subplot(338)
+    plt.imshow(transformed.cpu().numpy()[0, 0, :,:,0 ])
+
+    plt.subplot(339)
+    plt.imshow(recovered.cpu().numpy()[0, 0,:,:,0])
+    # plt.subplot(144)
+    # plt.imshow(mask.cpu().numpy()[0,0])
+    plt.savefig(join(dir_path, 'test_affine_3D.png'))
