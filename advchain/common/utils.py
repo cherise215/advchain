@@ -146,6 +146,27 @@ def _disable_tracking_bn_stats(model):
     yield
     switch_attr(model, hist_states=old_states)
 
+@contextlib.contextmanager
+def _fix_dropout(model):
+    def switch_attr(model):
+        """[summary]
+
+        Args:
+            model ([torch.nn.Module]): [description]
+            new_state ([bool], optional): [description]. Defaults to None.
+            hist_states ([type], optional): [description]. Defaults to None.
+
+        Returns:
+            [type]: [description]
+        """
+        for name, module in model.named_modules():
+            if isinstance(module, Fixable2DDropout) or isinstance(module, Fixable3DDropout):
+                old_state = module.lazy_load ## freeze dropout to make the computation graph static
+                module.lazy_load = not old_state
+
+    old_states = switch_attr(model)
+    yield
+    switch_attr(model)
 
 def set_grad(module, requires_grad=False):
     for p in module.parameters():  # reset requires_grad

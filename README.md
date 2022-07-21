@@ -3,6 +3,9 @@
 This repo contains the pytorch implementation of adversarial data augmentation, which supports to perform adversarial training on a chain of image photometric transformations and geometric transformations for improved consistency regularization.
 Please cite our work if you find it useful in your work.
 
+## License:
+All rights reserved. 
+
 ## Introduction
 
 Adv Chain takes both image information and network's current knowledge into account, and utilizes these information to find effective transformation parameters that are beneficial for the downstream segmentation task. Specifically, the underlying image transformation parameters are optimized so that the dissimilarity/inconsistency between the network's output for clean data and the output for perturbed/augmented data is maximized.
@@ -50,11 +53,16 @@ For more details please see our paper on [arXiv](https://arxiv.org/abs/2108.0342
 2. Import the library and then add it to your training codebase. Please refer to examples under the `example/` folder for more details.
 
 
-## License:
-All rights reserved. 
 
 ## News:
 [2022-07-16] now support 3D augmentation (beta)! Please see `advchain/example/adv_chain_data_generation_cardiac.ipynb` to find example usage.
+
+## Guide:
+1. Please perform adversarial data augmentation *before* computing standard supervised loss
+2. For networks with dropout layers, please replace 'nn.Dropout2d' or  nn.Dropout3d with fixable dropout layers to allow optimization with fixed network structure. We provide 2D, and 3D fixable dropout layers in "advchain.common.layers.Fixable2DDropout, advchain.common.layers.Fixable3DDropout". 
+3. for semi-supervised learning, please perform adversarial data augmentation on labelled and unlabelled batch *separately*. 
+
+
 ## Citation
 
 If you find this useful for your work, please consider citing

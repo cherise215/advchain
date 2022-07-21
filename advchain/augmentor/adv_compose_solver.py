@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from advchain.common.loss import calc_segmentation_consistency  # noqa
-from advchain.common.utils import _disable_tracking_bn_stats, set_grad
+from advchain.common.utils import _disable_tracking_bn_stats, set_grad,_fix_dropout
 
 
 class ComposeAdversarialTransformSolver(object):
@@ -237,7 +237,9 @@ class ComposeAdversarialTransformSolver(object):
         set_grad(model, requires_grad=True)
         old_state = model.training
         model.train()
-        adv_output = model(adv_data.detach().clone())
+        with  _fix_dropout(model):
+            adv_output = model(adv_data.detach().clone())
+        
         if self.if_contains_geo_transform(chain_of_transforms):
             masks = torch.ones_like(
                 init_output, dtype=init_output.dtype, device=init_output.device,requires_grad=False)
