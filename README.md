@@ -59,7 +59,7 @@ For more details please see our paper on [arXiv](https://arxiv.org/abs/2108.0342
 
 ## Guide:
 1. Please perform adversarial data augmentation *before* computing standard supervised loss
-2. For networks with dropout layers, please replace 'nn.Dropout2d' or  nn.Dropout3d with fixable dropout layers to allow optimization with fixed network structure. We provide 2D, and 3D fixable dropout layers in "advchain.common.layers.Fixable2DDropout, advchain.common.layers.Fixable3DDropout". 
+2. For networks with dropout layers, please replace `nn.Dropout2d` or `nn.Dropout3d` with fixable dropout layers to allow optimization with fixed network structure. We provide 2D, and 3D fixable dropout layers in `advchain.common.layers.Fixable2DDropout`, `advchain.common.layers.Fixable3DDropout`. 
 3. for semi-supervised learning, please perform adversarial data augmentation on labelled and unlabelled batch *separately*. 
 
 
