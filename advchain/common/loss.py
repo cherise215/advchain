@@ -61,7 +61,7 @@ def calc_segmentation_consistency(output, reference, divergence_types=['kl', 'co
                 input_pred = torch.softmax(output_new, dim=1)
                 loss = torch.nn.MSELoss(reduction='mean')(
                     target=target_pred*mask, input=input_pred*mask)
-                loss = loss/(torch.numel(target_pred)/num_classes)
+                loss = loss/(torch.numel(mask)/num_classes)
             elif divergence_type == 'contour':  # contour-based loss
                 if not is_gt:
                     target_pred = torch.softmax(output_reference, dim=1)
