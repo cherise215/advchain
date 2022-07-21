@@ -6,9 +6,12 @@ Please cite our work if you find it useful in your work.
 ## License:
 All rights reserved. 
 
+## News:
+[2022-07-16] now support 3D augmentation (beta)! Please see `advchain/example/adv_chain_data_generation_cardiac_2D_3D.ipynb` to find example usage.
+
 ## Introduction
 
-Adv Chain takes both image information and network's current knowledge into account, and utilizes these information to find effective transformation parameters that are beneficial for the downstream segmentation task. Specifically, the underlying image transformation parameters are optimized so that the dissimilarity/inconsistency between the network's output for clean data and the output for perturbed/augmented data is maximized.
+Adv Chain is a **differentiable** data augmentation library, which supports to augment 2D/3D image tensors with *optimized* data augmentation parameters. It takes both image information and network's current knowledge into account, and utilizes these information to find effective transformation parameters that are beneficial for the downstream segmentation task. Specifically, the underlying image transformation parameters are optimized so that the dissimilarity/inconsistency between the network's output for clean data and the output for perturbed/augmented data is maximized.
 
 <img align="center" src="assets/graphical_abstract.png" width="750">
 
@@ -235,20 +238,18 @@ for data in loader:
     optimizer.step()
 ```
 
-## News:
-[2022-07-16] now support 3D augmentation (beta)! Please see `advchain/example/adv_chain_data_generation_cardiac_2D_3D.ipynb` to find example usage.
 
 ## Guide:
 1. Please perform adversarial data augmentation *before* computing standard supervised loss
 2. For networks with dropout layers, please replace `nn.Dropout2d` or `nn.Dropout3d` with fixable dropout layers to allow optimization with fixed network structure. We provide 2D, and 3D fixable dropout layers in `advchain.common.layers.Fixable2DDropout`, `advchain.common.layers.Fixable3DDropout`. 
 3. for semi-supervised learning, please perform adversarial data augmentation on labelled and unlabelled batch *separately*. 
 
-##FAQ
-Q1. My network has multiple output branches, how can I specify which one used to guide adversarial data augmentation?
-A1. Currently, by default, our solver only supports model with a single output. One can specify the output from which branch by reimplementing the function in `get_net_output(self,model, data)`, which can be found in `advchain/augmentor/adv_compose_solver.py`.
+## FAQ
+- Q1. My network has multiple output branches, how can I specify which one to be used to guide adversarial data augmentation?
+- A1. Currently, by default, our solver only supports model with a single output. One can specify the output from which branch by reimplementing the function in `get_net_output(self,model, data)`, which can be found in `advchain/augmentor/adv_compose_solver.py`.
 
-Q2: Can I use other losses?
-A2. Yes. You can do so by adding your preferred one in `advchaincalc_segmentation_consistency`, which is in `/vol/biomedic3/cc215/Project/advchain/advchain/common/loss.py`
+- Q2: Can I use other losses?
+- A2. Yes. Currently we support mean squared loss ('mse'), kl loss ('kl'), and contour loss ('contour'). You can also implement your preferred one in `advchaincalc_segmentation_consistency`, which is in `/vol/biomedic3/cc215/Project/advchain/advchain/common/loss.py`. and  change `divergence_types = ['your loss name'],  divergence_weights=[1.0` when initializing `ComposeAdversarialTransformSolver`.
 
 
 ## Citation
