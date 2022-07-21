@@ -81,10 +81,10 @@ augmentor_affine= AdvAffine(
                 spatial_dims=spatial_dims,
                 config_dict={
                  'rot':30.0/180,
-                 'scale_x':0.,
-                 'scale_y':0,
-                 'shift_x':0,
-                 'shift_y':0,
+                 'scale_x':0.2,
+                 'scale_y':0.2,
+                 'shift_x':0.1,
+                 'shift_y':0.1,
                  'data_size':(n,c,h,w),
                  'forward_interp':'bilinear',
                  'backward_interp':'bilinear'},
@@ -110,7 +110,7 @@ solver = ComposeAdversarialTransformSolver(
         divergence_weights=[1.0,0.5],
         use_gpu= True,
         debug=True,
-        if_norm_image=False ## if true, it will allow to preserve the intensity range despite the data augmentation.
+        if_norm_image=True ## if true, it will allow to preserve the intensity range despite the data augmentation.
        )
 ```
 To perform random data augmentation, simply initialize transformation parameters and call `solver.forward`
@@ -150,7 +150,7 @@ for data in loader:
         divergence_weights=[1.0,0.5],
         use_gpu= True,
         debug=False,
-        if_norm_image=False, ## turn it on when intensity range needs to be preserved
+        if_norm_image=True, ## turn it on when intensity range needs to be preserved
        )
     solver.init_random_transformation()
     ## 3. optimize transformation parameters to augment data and compute regularization loss
@@ -193,7 +193,7 @@ for data in loader:
         divergence_weights=[1.0,0.5],
         use_gpu= True,
         debug=False,
-        if_norm_image=False, ## turn it on when intensity range needs to be preserved
+        if_norm_image=True, ## turn it on when intensity range needs to be preserved
        )
     solver.init_random_transformation()
     ## 3. optimize transformation parameters to augment data and compute regularization loss
@@ -213,7 +213,7 @@ for data in loader:
         divergence_weights=[1.0,0.5],
         use_gpu= True,
         debug=False,
-        if_norm_image=False, ## turn it on when intensity range needs to be preserved
+        if_norm_image=True, ## turn it on when intensity range needs to be preserved
        )
     solver.init_random_transformation()
     ## 5. optimize transformation parameters to augment unlabelled data and compute regularization loss
