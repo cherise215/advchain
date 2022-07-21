@@ -238,7 +238,7 @@ class ComposeAdversarialTransformSolver(object):
         old_state = model.training
         model.train()
         with  _fix_dropout(model):
-            adv_output = model(adv_data.detach().clone())
+            adv_output = self.get_net_output(model,adv_data.detach().clone())
         
         if self.if_contains_geo_transform(chain_of_transforms):
             masks = torch.ones_like(
@@ -269,7 +269,7 @@ class ComposeAdversarialTransformSolver(object):
                 optimize_flags=optimize_flags, chain_of_transforms=self.chain_of_transforms)
             augmented_data = self.forward(data.detach().clone())
             with _disable_tracking_bn_stats(model):
-                perturbed_output = model(augmented_data)
+                perturbed_output = self.get_net_output(model,augmented_data)
             # calc divergence loss
             if self.if_contains_geo_transform(self.chain_of_transforms):
                 warped_back_prediction = self.predict_backward(
@@ -330,10 +330,16 @@ class ComposeAdversarialTransformSolver(object):
         new_data = new_data.view(old_size)
         return new_data
 
+    def get_net_output(self,model, data):
+        '''
+        set up network output function
+        '''
+        return model.forward(data)
+
     def get_init_output(self, model, data):
         with torch.no_grad():
             with _disable_tracking_bn_stats(model):
-                reference_output = model(data)
+                reference_output = self.get_net_output(model,data)
         return reference_output
 
     def get_adv_data(self, data, model, init_output=None, n_iter=0):

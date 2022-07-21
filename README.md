@@ -243,9 +243,15 @@ for data in loader:
 2. For networks with dropout layers, please replace `nn.Dropout2d` or `nn.Dropout3d` with fixable dropout layers to allow optimization with fixed network structure. We provide 2D, and 3D fixable dropout layers in `advchain.common.layers.Fixable2DDropout`, `advchain.common.layers.Fixable3DDropout`. 
 3. for semi-supervised learning, please perform adversarial data augmentation on labelled and unlabelled batch *separately*. 
 
+##FAQ
+Q1. My network has multiple output branches, how can I specify which one used to guide adversarial data augmentation?
+A1. Currently, by default, our solver only supports model with a single output. One can specify the output from which branch by reimplementing the function in `get_net_output(self,model, data)`, which can be found in `advchain/augmentor/adv_compose_solver.py`.
+
+Q2: Can I use other losses?
+A2. Yes. You can do so by adding your preferred one in `advchaincalc_segmentation_consistency`, which is in `/vol/biomedic3/cc215/Project/advchain/advchain/common/loss.py`
+
 
 ## Citation
-
 If you find this useful for your work, please consider citing
 
 ```
