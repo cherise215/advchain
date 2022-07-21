@@ -35,7 +35,7 @@ For more details please see our paper on [arXiv](https://arxiv.org/abs/2108.0342
     ```
     pip install -r requirements.txt
     ```
-2.  Play with the provided jupyter notebook to check the enviroments, see `example/adv_chain_data_generation_cardiac.ipynb` to find example usage.
+2.  Play with the provided jupyter notebook to check the enviroments, see `example/adv_chain_data_generation_cardiac_2D_3D.ipynb` to find example usage.
 
 ## Usage
 
@@ -52,10 +52,191 @@ For more details please see our paper on [arXiv](https://arxiv.org/abs/2108.0342
 
 2. Import the library and then add it to your training codebase. Please refer to examples under the `example/` folder for more details.
 
+### Example Code
+First set up a set of transformation functions:
+```python
+## set up different transformation functions
+n,c,h,w = data.size()
+spatial_dims=2 ## for 2D, change to 3 for 3D
+augmentor_bias= AdvBias(
+                 spatial_dims=spatial_dims,
+                 config_dict={'epsilon':0.3,
+                 'control_point_spacing':[h//2,w//2],
+                 'downscale':2,
+                 'data_size':(n,c,h,w),
+                 'interpolation_order':3,
+                 'init_mode':'random',
+                 'space':'log'},debug=debug)
 
+           
+
+augmentor_noise= AdvNoise( 
+                spatial_dims=spatial_dims,
+                config_dict={'epsilon':1,
+                'xi':1e-6,
+                 'data_size':(n,c,h,w)}
+                 debug=debug)
+    
+augmentor_affine= AdvAffine(
+                spatial_dims=spatial_dims,
+                config_dict={
+                 'rot':30.0/180,
+                 'scale_x':0.,
+                 'scale_y':0,
+                 'shift_x':0,
+                 'shift_y':0,
+                 'data_size':(n,c,h,w),
+                 'forward_interp':'bilinear',
+                 'backward_interp':'bilinear'},
+                 debug=debug)
+
+augmentor_morph= AdvMorph(
+                spatial_dims=spatial_dims,
+                config_dict=
+                {'epsilon':1.5,
+                 'data_size':(n,c,h,w),
+                 'vector_size':[h//16,w//16],
+                 'interpolator_mode':'bilinear'
+                 }, 
+                 debug=debug)
+
+```
+We can then compose them by putting them in a list with a specified order and initialize a solver to perform random/adversarial data augmentation
+```python
+transformation_chain = [augmentor_noise,augmentor_bias,augmentor_morph, augmentor_affine] ## specify an order: noise->bias->morph->affine
+solver = ComposeAdversarialTransformSolver(
+        chain_of_transforms=transformation_chain,
+        divergence_types = ['mse','contour'], ### you can also change it to 'kl'.
+        divergence_weights=[1.0,0.5],
+        use_gpu= True,
+        debug=True,
+        if_norm_image=False ## if true, it will allow to preserve the intensity range despite the data augmentation.
+       )
+```
+To perform random data augmentation, simply initialize transformation parameters and call `solver.forward`
+
+```python
+solver.init_random_transformation()
+rand_transformed_image = solver.forward(data.detach().clone())
+```
+To perform adversarial data augmentation for adversarial training, a 2D/3D segmentation model `model` is needed.
+```python
+consistency_regularization_loss = solver.adversarial_training(
+        data=data,model=model,
+        n_iter=1, ## number of adversarial optimization steps, if set to 0, then it will act as a standard consistency loss calculator
+        lazy_load=[True]*len(transformation_chain), ## if set lazy load to true, it will use the previous sampled random bias field as initialization.
+        optimize_flags=[True]*len(transformation_chain), ## specify which transformation function to be optimized
+        step_sizes=1,power_iteration=[False]*len(transformation_chain))
+
+adv_transformed_image = solver.forward(data.detach().clone()) ## adversarial augmented image
+```
+A pseudo-code for supervised training with adversarial data augmentation:
+```python
+from advchain.common.utils import random_chain
+
+for data in loader:
+    image: Tensor = data["images"]
+    target: Tensor = data["gt"]
+  
+    net.zero_grad()
+    ## 1. sample a chain with a random order
+    transformation_family = [augmentor_noise,augmentor_bias,augmentor_morph,augmentor_affine]
+    one_chain = random_chain(transformation_family.copy(),max_length=len(transformation_family))[0] 
+
+    ## 2. set up a solver to optimize this chain
+    solver = ComposeAdversarialTransformSolver(
+        chain_of_transforms=one_chain,
+        divergence_types = ['mse','contour'], ### you can also change it to 'kl'
+        divergence_weights=[1.0,0.5],
+        use_gpu= True,
+        debug=False,
+        if_norm_image=False, ## turn it on when intensity range needs to be preserved
+       )
+    solver.init_random_transformation()
+    ## 3. optimize transformation parameters to augment data and compute regularization loss
+    adv_consistency_reg_loss = solver.adversarial_training(
+      data = image,
+      model = net,
+      n_iter = 1, ## set up  the number of iterations for updating the transformation model.
+      lazy_load = [False]*len(one_chain), 
+      optimize_flags = [True]*len(one_chain),  ## you can also turn off adversarial training for one particular transformation
+      step_sizes = 1) ## set up step size, you can also change it to a list of step sizes, so that different transformation have different step size
+
+    ## 4. standard training 
+    net.zero_grad()
+    output: Tensor = net(image)
+    loss = supervised_loss(output, target)
+    total_loss = loss + w * adv_consistency_reg_loss ## for semi-supervised learning, it is better to perform linear ramp-up to schedule the weight w.
+    total_loss.backward()
+    optimizer.step()
+```
+
+
+A pseudo-code for semi-supervised training with adversarial data augmentation:
+```python
+from advchain.common.utils import random_chain
+transformation_family = [augmentor_noise,augmentor_bias,augmentor_morph,augmentor_affine]
+
+for data in loader:
+    image: Tensor = data["images"]
+    target: Tensor = data["gt"]
+    image_u: Tensor = data["unlabelled_images"]
+
+    net.zero_grad()
+    ## 1. sample a chain with a random order
+    one_chain = random_chain(transformation_family.copy(),max_length=len(transformation_family))[0] 
+
+    ## 2. set up a solver to optimize this chain
+    solver = ComposeAdversarialTransformSolver(
+        chain_of_transforms=one_chain,
+        divergence_types = ['mse','contour'], ### you can also change it to 'kl'
+        divergence_weights=[1.0,0.5],
+        use_gpu= True,
+        debug=False,
+        if_norm_image=False, ## turn it on when intensity range needs to be preserved
+       )
+    solver.init_random_transformation()
+    ## 3. optimize transformation parameters to augment data and compute regularization loss
+    adv_consistency_reg_loss = solver.adversarial_training(
+      data = image,
+      model = net,
+      n_iter = 1, ## set up  the number of iterations for updating the transformation model.
+      lazy_load = [False]*len(one_chain), 
+      optimize_flags = [True]*len(one_chain),  ## you can also turn off adversarial training for one particular transformation
+      step_sizes = 1) ## set up step size, you can also change it to a list of step sizes, so that different transformation have different step size
+
+    ## 4. perform data augmentation for the unlabelled data:
+    one_chain = random_chain(transformation_family.copy(),max_length=len(transformation_family))[0] 
+    solver = ComposeAdversarialTransformSolver(
+        chain_of_transforms=one_chain,
+        divergence_types = ['mse','contour'], ### you can also change it to 'kl'
+        divergence_weights=[1.0,0.5],
+        use_gpu= True,
+        debug=False,
+        if_norm_image=False, ## turn it on when intensity range needs to be preserved
+       )
+    solver.init_random_transformation()
+    ## 5. optimize transformation parameters to augment unlabelled data and compute regularization loss
+    unlabelled_adv_consistency_reg_loss = solver.adversarial_training(
+      data = image_u,
+      model = net,
+      n_iter = 1, ## set up  the number of iterations for updating the transformation model.
+      lazy_load = [False]*len(one_chain), 
+      optimize_flags = [True]*len(one_chain),  ## you can also turn off adversarial training for one particular transformation
+      step_sizes = 1) ## set up step size, you can also change it to a list of step sizes, so that different transformation have different step size
+  
+
+    ## 6. standard training 
+    net.zero_grad()
+    output: Tensor = net(image)
+    loss = supervised_loss(output, target)
+    total_loss = loss + w * (adv_consistency_reg_loss+unlabelled_adv_consistency_reg_loss) ## for semi-supervised learning, it is better to perform linear ramp-up to schedule the weight w.
+    total_loss.backward()
+    optimizer.step()
+```
 
 ## News:
-[2022-07-16] now support 3D augmentation (beta)! Please see `advchain/example/adv_chain_data_generation_cardiac.ipynb` to find example usage.
+[2022-07-16] now support 3D augmentation (beta)! Please see `advchain/example/adv_chain_data_generation_cardiac_2D_3D.ipynb` to find example usage.
 
 ## Guide:
 1. Please perform adversarial data augmentation *before* computing standard supervised loss
