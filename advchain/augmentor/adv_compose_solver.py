@@ -137,6 +137,19 @@ class ComposeAdversarialTransformSolver(object):
             print('[outer loop] loss', dist.item())
         return dist
 
+    def train():
+        if self.chain_of_transforms is None:
+            raise ValueError('please initialize the transformation chain first')
+        else:
+            for tr in self.chain_of_transforms:
+                tr.train()
+    def eval():
+        if self.chain_of_transforms is None:
+            raise ValueError('please initialize the transformation chain first')
+        else:
+            for tr in self.chain_of_transforms:
+                tr.eval()
+
     def forward(self, data, chain_of_transforms=None):
         '''
         forward the data to get transformed data

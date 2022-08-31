@@ -31,7 +31,7 @@ def get_unet_model(model_path, num_classes=2, device=None, model_arch='UNet_16')
         model = UNet(input_channel=1, num_classes=num_classes, feature_scale=1)
     else:
         raise NotImplementedError
-    model.load_state_dict(torch.load(model_path))
+    model.load_state_dict(torch.load(model_path,map_location=device))
     model = model.to(device)
     return model
 

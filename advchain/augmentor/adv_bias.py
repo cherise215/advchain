@@ -305,20 +305,20 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
             if scale_factor_h > 1 or scale_factor_w > 1:
                 upsampler = torch.nn.Upsample(size = (self._image_size[0] , self._image_size[1]), mode='bilinear',
                                                 align_corners=False)
-                diff_bias = upsampler(bias_field_tmp)
+                bias_field_tmp = upsampler(bias_field_tmp)
 
         elif self._dim==3:
             scale_factor_d = self._image_size[2] / bias_field_tmp.size(4)
             if scale_factor_h > 1 or scale_factor_w > 1 or scale_factor_d > 1:
                 upsampler = torch.nn.Upsample(scale_factor=(scale_factor_h, scale_factor_w,scale_factor_d), mode='trilinear',
                                             align_corners=False)
-                diff_bias = upsampler(bias_field_tmp)
+                bias_field_tmp = upsampler(bias_field_tmp)
                 # print('recover resolution, size of bias field:', diff_bias.size())
             
         if self.use_log:
-            bias_field = torch.exp(diff_bias)
+            bias_field = torch.exp(bias_field_tmp)
         else:
-            bias_field=1+diff_bias
+            bias_field=1+bias_field_tmp
         return bias_field
 
     def clip_bias(self, bias_field, magnitude=None):

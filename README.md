@@ -1,4 +1,10 @@
-# Adversarial Data Augmentation with Chained Transformations (Adv Chain)
+
+<p align="center">
+  <img align="center" src="assets/advchain_logo.png" width="500">
+  </a>
+</p>
+
+# Adversarial Data Augmentation with Chained Transformations (AdvChain)
 
 This repo contains the pytorch implementation of adversarial data augmentation, which supports to perform adversarial training on a chain of image photometric transformations and geometric transformations for improved consistency regularization.
 Please cite our work if you find it useful in your work.
@@ -11,9 +17,9 @@ All rights reserved.
 
 ## Introduction
 
-Adv Chain is a **differentiable** data augmentation library, which supports to augment 2D/3D image tensors with *optimized* data augmentation parameters. It takes both image information and network's current knowledge into account, and utilizes these information to find effective transformation parameters that are beneficial for the downstream segmentation task. Specifically, the underlying image transformation parameters are optimized so that the dissimilarity/inconsistency between the network's output for clean data and the output for perturbed/augmented data is maximized.
+AdvChain is a **differentiable** data augmentation library, which supports to augment 2D/3D image tensors with *optimized* data augmentation parameters. It takes both image information and network's current knowledge into account, and utilizes these information to find effective transformation parameters that are beneficial for the downstream segmentation task. Specifically, the underlying image transformation parameters are optimized so that the dissimilarity/inconsistency between the network's output for clean data and the output for perturbed/augmented data is maximized.
 
-<img align="center" src="assets/graphical_abstract.png" width="750">
+<img align="center" src="assets/advchain.png" width="800">
 
 As shown below, the learned adversarial data augmentation focuses more on deforming/attacking region of interest, generating realistic adversarial examples that the network is sensitive at. In our experiments, we found that augmenting the training data with these adversarial examples are beneficial for enhancing the segmentation network's generalizability.
 <img align="center" src="assets/cardiac_example.png" width="750">
@@ -249,7 +255,7 @@ for data in loader:
 - A1. Currently, by default, our solver only supports model with a single output. One can specify the output from which branch by reimplementing the function in `get_net_output(self,model, data)`, which can be found in `advchain/augmentor/adv_compose_solver.py`.
 
 - Q2: Can I use other losses?
-- A2. Yes. Currently we support mean squared loss ('mse'), kl loss ('kl'), and contour loss ('contour'). You can also implement your preferred one in `advchaincalc_segmentation_consistency`, which is in `/vol/biomedic3/cc215/Project/advchain/advchain/common/loss.py`. and  change `divergence_types = ['your loss name'],  divergence_weights=[1.0` when initializing `ComposeAdversarialTransformSolver`.
+- A2. Yes. Currently we support mean squared loss ('mse'), kl loss ('kl'), and contour loss ('contour'). You can also implement your preferred one in `calc_segmentation_consistency`, which is located in `/vol/biomedic3/cc215/Project/advchain/advchain/common/loss.py`. and  change `divergence_types = ['your loss name'],  divergence_weights=[1.0]` when initializing `ComposeAdversarialTransformSolver`.
 
 
 ## Citation
