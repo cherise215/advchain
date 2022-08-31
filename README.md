@@ -6,9 +6,10 @@
 
 # Adversarial Data Augmentation with Chained Transformations (AdvChain)
 
-This repo contains the pytorch implementation of adversarial data augmentation, which supports to perform adversarial training on a chain of image photometric transformations and geometric transformations for improved consistency regularization.[Paper](https://authors.elsevier.com/sd/article/S1361-8415(22)00230-4)
+This repo contains the pytorch implementation of adversarial data augmentation, which supports to perform adversarial training on a chain of image photometric transformations and geometric transformations for improved consistency regularization.
 Please cite our work if you find it useful in your work.
 
+[Full Paper](https://authors.elsevier.com/sd/article/S1361-8415(22)00230-4)
 ## License:
 All rights reserved. 
 
@@ -255,8 +256,10 @@ for data in loader:
 - A1. Currently, by default, our solver only supports model with a single output. One can specify the output from which branch by reimplementing the function in `get_net_output(self,model, data)`, which can be found in `advchain/augmentor/adv_compose_solver.py`.
 
 - Q2: Can I use other losses?
-- A2. Yes. Currently we support mean squared loss ('mse'), kl loss ('kl'), and contour loss ('contour'). You can also implement your preferred one in `calc_segmentation_consistency`, which is located in `/vol/biomedic3/cc215/Project/advchain/advchain/common/loss.py`. and  change `divergence_types = ['your loss name'],  divergence_weights=[1.0]` when initializing `ComposeAdversarialTransformSolver`.
+- A2. Yes. Currently we support mean squared loss ('mse'), kl loss ('kl'), and contour loss ('contour'). You can also implement your preferred one in `calc_segmentation_consistency`, which is located in `advchain/common/loss.py`. and  change `divergence_types = ['your loss name'],  divergence_weights=[1.0]` when initializing `ComposeAdversarialTransformSolver`.
 
+- Q3: Can I add my own transformation function?
+- A3. Yes. AdvChain lets you create your own custom image transformation function to implement in your projects. This is achieved by extending [advchain/augmentor/adv_transformation_base](advchain/augmentor/adv_transformation_base.py) and implementing basic functions.
 
 ## Citation
 If you find this useful for your work, please consider citing
