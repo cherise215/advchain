@@ -268,7 +268,7 @@ If you find this useful for your work, please consider citing
   author = "Chen, Chen and Qin, Chen and Ouyang, Cheng and Wang, Shuo and Qiu,
             Huaqi and Chen, Liang and Tarroni, Giacomo and Bai, Wenjia and
             Rueckert, Daniel",
-    year = 2021,
+    year = 2022,
     note = {\url{https://authors.elsevier.com/sd/article/S1361-8415(22)00230-4}}
 }
 
