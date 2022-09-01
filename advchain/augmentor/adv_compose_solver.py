@@ -31,18 +31,7 @@ class ComposeAdversarialTransformSolver(object):
         self.if_norm_image = if_norm_image
         self.is_gt = is_gt
         self.class_weights = None
-
-    
-    def train(self):
-        assert self.self.chain_of_transforms is not None and len(self.chain_of_transforms)>=1, 'chain_of_transforms is None or empty'
-        for transform in self.chain_of_transforms:
-            transform.train()
-    
-    def eval(self):
-        assert self.chain_of_transforms is not None and len(self.chain_of_transforms)>=1, 'chain_of_transforms is None or empty'
-        for transform in self.chain_of_transforms:
-            transform.eval()
-    
+            
     def adversarial_training(self, data, model,
                              optimize_flags=None,
                              init_output=None,
@@ -147,19 +136,6 @@ class ComposeAdversarialTransformSolver(object):
             print('[outer loop] loss', dist.item())
         return dist
 
-    def train():
-        if self.chain_of_transforms is None:
-            raise ValueError('please initialize the transformation chain first')
-        else:
-            for tr in self.chain_of_transforms:
-                tr.train()
-    def eval():
-        if self.chain_of_transforms is None:
-            raise ValueError('please initialize the transformation chain first')
-        else:
-            for tr in self.chain_of_transforms:
-                tr.eval()
-
     def forward(self, data, chain_of_transforms=None):
         '''
         forward the data to get transformed data
@@ -185,6 +161,7 @@ class ComposeAdversarialTransformSolver(object):
             t_data = self.rescale_intensity(t_data, original_min, original_max)
         return t_data
 
+    def eval(self):
     def predict_forward(self, data, chain_of_transforms=None):
         '''
         transform the prediction with the learned/random data augmentation, only applies to geomtric transformations.
