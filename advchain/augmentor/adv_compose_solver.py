@@ -162,6 +162,8 @@ class ComposeAdversarialTransformSolver(object):
         return t_data
 
     def eval(self):
+        for transform in self.chain_of_transforms:
+            transform.eval()
     def predict_forward(self, data, chain_of_transforms=None):
         '''
         transform the prediction with the learned/random data augmentation, only applies to geomtric transformations.
