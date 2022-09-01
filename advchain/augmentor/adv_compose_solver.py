@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from advchain.common.loss import calc_segmentation_consistency  # noqa
-from advchain.common.utils import _disable_tracking_bn_stats, set_grad,_fix_dropout
+from advchain.common.utils import _disable_tracking_bn_stats,_fix_dropout
 
 
 class ComposeAdversarialTransformSolver(object):
@@ -32,6 +32,16 @@ class ComposeAdversarialTransformSolver(object):
         self.is_gt = is_gt
         self.class_weights = None
 
+    
+    def train(self):
+        assert self.self.chain_of_transforms is not None and len(self.chain_of_transforms)>=1, 'chain_of_transforms is None or empty'
+        for transform in self.chain_of_transforms:
+            transform.train()
+    
+    def eval(self):
+        assert self.chain_of_transforms is not None and len(self.chain_of_transforms)>=1, 'chain_of_transforms is None or empty'
+        for transform in self.chain_of_transforms:
+            transform.eval()
     
     def adversarial_training(self, data, model,
                              optimize_flags=None,
@@ -234,7 +244,7 @@ class ComposeAdversarialTransformSolver(object):
             tr.eval()
         adv_data = self.forward(data, chain_of_transforms)
         torch.cuda.empty_cache()
-        set_grad(model, requires_grad=True)
+        # set_grad(model, requires_grad=True)
         old_state = model.training
         model.train()
         with  _fix_dropout(model):
