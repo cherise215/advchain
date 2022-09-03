@@ -161,6 +161,9 @@ class ComposeAdversarialTransformSolver(object):
             t_data = self.rescale_intensity(t_data, original_min, original_max)
         return t_data
 
+    def train(self):
+        for transform in self.chain_of_transforms:
+            transform.train()
     def eval(self):
         for transform in self.chain_of_transforms:
             transform.eval()

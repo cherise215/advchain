@@ -67,6 +67,8 @@ class AdvTransformBase(object):
         return self.step_size
 
     def train(self):
+        if self.param is None:
+            self.init_parameters()
         self.is_training = True
         self.param = self.param.detach().clone()
         self.param.requires_grad = True
