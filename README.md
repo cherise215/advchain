@@ -183,7 +183,7 @@ for data in loader:
     net.zero_grad()
     ## 1. sample a chain with a random order
     transformation_family = [augmentor_noise,augmentor_bias,augmentor_morph,augmentor_affine]
-    one_chain = random_chain(transformation_family.copy(),max_length=len(transformation_family))[0] 
+    one_chain = random_chain(transformation_family.copy(),max_length=len(transformation_family))
 
     ## 2. set up a solver to optimize this chain
     solver = ComposeAdversarialTransformSolver(
@@ -192,7 +192,7 @@ for data in loader:
         divergence_weights=[1.0,0.5],
         use_gpu= True,
         debug=False,
-        if_norm_image=True, ## turn it on when intensity range needs to be preserved
+        if_norm_image=True, ## turn it on when intensity range needs to be preserved. Otherwise, turn it off. 
        )
     solver.init_random_transformation()
     ## 3. optimize transformation parameters to augment data and compute regularization loss
@@ -248,7 +248,7 @@ for data in loader:
       step_sizes = 1) ## set up step size, you can also change it to a list of step sizes, so that different transformation have different step size
 
     ## 4. perform data augmentation for the unlabelled data:
-    one_chain = random_chain(transformation_family.copy(),max_length=len(transformation_family))[0] 
+    one_chain = random_chain(transformation_family.copy(),max_length=len(transformation_family))
     solver = ComposeAdversarialTransformSolver(
         chain_of_transforms=one_chain,
         divergence_types = ['mse','contour'], ### you can also change it to 'kl'
