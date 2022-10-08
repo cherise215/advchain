@@ -45,8 +45,8 @@ If you find this useful for your work, please consider citing
 
 
 ## News:
-[2022-10-08] now support generating anatomical structure preserving transformations, with custom padding mode for warping images that are normalized NOT in [0,1]. Please see Q4, and Q5 below for reference.
-[2022-07-16] now support 3D augmentation (beta)! Please see `advchain/example/adv_chain_data_generation_cardiac_2D_3D.ipynb` to find example usage.
+[x] [2022-10-08] now support generating anatomical structure preserving transformations, with custom padding mode for warping images that are normalized NOT in [0,1]. Please see Q4, and Q5 below for reference.
+[x] [2022-07-16] now support 3D augmentation (beta)! Please see `advchain/example/adv_chain_data_generation_cardiac_2D_3D.ipynb` to find example usage.
 
 ## Introduction
 
