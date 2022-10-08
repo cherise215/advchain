@@ -159,12 +159,16 @@ def _fix_dropout(model):
         Returns:
             [type]: [description]
         """
+        old_states = {}
         for name, module in model.named_modules():
             if isinstance(module, Fixable2DDropout) or isinstance(module, Fixable3DDropout):
                 old_state = module.lazy_load ## freeze dropout to make the computation graph static
                 module.lazy_load = not old_state
+                old_states [name] = old_state
+        return old_states
 
     old_states = switch_attr(model)
+    # print('fix dropout', old_states)
     yield
     switch_attr(model)
 

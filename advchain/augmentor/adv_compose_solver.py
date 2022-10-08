@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from advchain.common.loss import calc_segmentation_consistency  # noqa
-from advchain.common.utils import _disable_tracking_bn_stats, set_grad,_fix_dropout
+from advchain.common.utils import _disable_tracking_bn_stats,_fix_dropout
 
 
 
@@ -39,8 +39,7 @@ class ComposeAdversarialTransformSolver(object):
         self.max_intensity = max_intensity
         self.is_gt = is_gt
         self.class_weights = None
-
-    
+            
     def adversarial_training(self, data, model,
                              optimize_flags=None,
                              init_output=None,
@@ -176,6 +175,12 @@ class ComposeAdversarialTransformSolver(object):
             t_data = torch.clamp(t_data, original_min, original_max)
         return t_data
 
+    def train(self):
+        for transform in self.chain_of_transforms:
+            transform.train()
+    def eval(self):
+        for transform in self.chain_of_transforms:
+            transform.eval()
     def predict_forward(self, data, chain_of_transforms=None):
         '''
         transform the prediction with the learned/random data augmentation, only applies to geomtric transformations.
@@ -300,7 +305,6 @@ class ComposeAdversarialTransformSolver(object):
         stop_flag = False if n_iter>0 else True
         i_iter = 0
         one_time_iter = n_iter
-        set_grad(model,False)
         while stop_flag is False:
             torch.cuda.empty_cache()
             model.zero_grad()
@@ -398,7 +402,6 @@ class ComposeAdversarialTransformSolver(object):
                 else: 
                     stop_flag=True
         torch.cuda.empty_cache()
-        set_grad(model,True)
         return transforms
 
     def rescale_intensity(self, data, new_min=0, new_max=1, eps=1e-20):
