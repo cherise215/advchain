@@ -226,7 +226,7 @@ for data in loader:
 
     net.zero_grad()
     ## 1. sample a chain with a random order
-    one_chain = random_chain(transformation_family.copy(),max_length=len(transformation_family))[0] 
+    one_chain = random_chain(transformation_family.copy(),max_length=len(transformation_family))
 
     ## 2. set up a solver to optimize this chain
     solver = ComposeAdversarialTransformSolver(
