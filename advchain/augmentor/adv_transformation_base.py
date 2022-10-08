@@ -2,7 +2,6 @@
 
 import torch
 
-
 class AdvTransformBase(object):
     """
      Adv Transformer base
@@ -14,6 +13,7 @@ class AdvTransformBase(object):
                     "data_size":[1,1,1,1]
                  },
                  use_gpu=True,
+                 device  = torch.device('cuda'),
                  debug=False):
         '''
 
@@ -27,16 +27,12 @@ class AdvTransformBase(object):
         self.param = None
         self.is_training = False
         self.use_gpu = use_gpu
+        self.device= device if self.use_gpu else torch.device('cpu')
         self.debug = debug
         self.diff = None
         # by default this is False
         self.is_training = False
-        if self.use_gpu:
-            self.device = torch.device('cuda')
-        else:
-            self.device = torch.device('cpu')
         self.init_config(self.config_dict)
-        self.param = None
         self.step_size = 1  # step size for optimizing data augmentation
 
     def init_config(self):
@@ -67,13 +63,20 @@ class AdvTransformBase(object):
         return self.step_size
 
     def train(self):
+        if self.param is None:
+            self.init_parameters()
         self.is_training = True
         self.param = self.param.detach().clone()
         self.param.requires_grad = True
 
     def eval(self):
-        self.param.requires_grad = False
-        self.is_training = False
+        if self.is_training:
+            try:
+                self.param.requires_grad = False
+            except:
+                print ('not leaf node')
+                self.param = self.param.detach()
+            self.is_training = False
 
     def rescale_parameters(self):
         raise NotImplementedError

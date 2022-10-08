@@ -7,6 +7,7 @@ from advchain.common.loss import calc_segmentation_consistency  # noqa
 from advchain.common.utils import _disable_tracking_bn_stats, set_grad,_fix_dropout
 
 
+
 class ComposeAdversarialTransformSolver(object):
     """
     apply a chain of transformation
@@ -16,11 +17,16 @@ class ComposeAdversarialTransformSolver(object):
                  divergence_weights=[1.0, 0.5], use_gpu=True,
                  debug=False,
                  if_norm_image=False,
+                 min_intensity = None,
+                 max_intensity = None,
                  is_gt=False,
                  ):
         '''
         adversarial data augmentation solver
         #TODO: implement class-aware consistency loss for segmentation tasks.
+        if_norm_image: clip values to be within [min_intensity,max_intensity] if specified. Otherwise, will take the values from clean data to estimate the range
+        min_intensity: float. minimum intensity of the clean data
+        max_intensity: float. maximum intensity of the clean data
         '''
         self.chain_of_transforms = chain_of_transforms
         self.use_gpu = use_gpu
@@ -29,6 +35,8 @@ class ComposeAdversarialTransformSolver(object):
         self.divergence_types = divergence_types
         self.require_bi_loss = self.if_contains_geo_transform()
         self.if_norm_image = if_norm_image
+        self.min_intensity = min_intensity
+        self.max_intensity = max_intensity
         self.is_gt = is_gt
         self.class_weights = None
 
@@ -40,7 +48,8 @@ class ComposeAdversarialTransformSolver(object):
                              power_iteration=False,
                              n_iter=1,
                              step_sizes=None,
-                             ):
+                             anatomy_mask_images=None,anatomy_reg_weight=50,volume_preserve_tolerance=5*1e-4):
+                             
         """
         given a batch of images: NCHW, and a current segmentation model
         find optimized transformations 
@@ -116,10 +125,10 @@ class ComposeAdversarialTransformSolver(object):
             init_output = self.get_init_output(data=data, model=model)
 
         # 3. optimize transformation to maxmize the difference between f(x) and f(t(x))
-        self.init_random_transformation(lazy_load)
-        if n_iter == 1 or n_iter > 1:
+        self.init_random_transformation(lazy_load,anatomy_mask_images=anatomy_mask_images,volume_preserve_tolerance=volume_preserve_tolerance)
+        if n_iter >= 1:
             optimized_transforms = self.optimizing_transform(
-                data=data, model=model, init_output=init_output, n_iter=n_iter, optimize_flags=optimize_flags, step_sizes=step_sizes)
+                data=data, model=model, init_output=init_output, n_iter=n_iter, optimize_flags=optimize_flags, step_sizes=step_sizes,anatomy_mask_images=anatomy_mask_images,anatomy_reg_weight=anatomy_reg_weight,volume_preserve_tolerance=volume_preserve_tolerance)
 
             self.chain_of_transforms = optimized_transforms
         else:
@@ -137,19 +146,6 @@ class ComposeAdversarialTransformSolver(object):
             print('[outer loop] loss', dist.item())
         return dist
 
-    def train():
-        if self.chain_of_transforms is None:
-            raise ValueError('please initialize the transformation chain first')
-        else:
-            for tr in self.chain_of_transforms:
-                tr.train()
-    def eval():
-        if self.chain_of_transforms is None:
-            raise ValueError('please initialize the transformation chain first')
-        else:
-            for tr in self.chain_of_transforms:
-                tr.eval()
-
     def forward(self, data, chain_of_transforms=None):
         '''
         forward the data to get transformed data
@@ -159,9 +155,7 @@ class ComposeAdversarialTransformSolver(object):
         '''
         data.requires_grad = False
         bs= data.size(0)
-        flatten_data = data.reshape(bs, -1)
-        original_min = torch.min(flatten_data, dim=1, keepdim=True).values
-        original_max = torch.max(flatten_data, dim=1, keepdim=True).values
+      
         t_data = data.detach().clone()
         self.diffs = []
         if chain_of_transforms is None:
@@ -172,7 +166,14 @@ class ComposeAdversarialTransformSolver(object):
             self.diffs.append(transform.diff)
             is_training = (is_training or transform.is_training)
         if self.if_norm_image:
-            t_data = self.rescale_intensity(t_data, original_min, original_max)
+            if self.min_intensity is None:
+                  original_min = torch.min(data)
+            else: original_min = self.min_intensity
+            if self.max_intensity is None:
+                original_max = torch.max(data)
+            else:
+                original_max =self.max_intensity
+            t_data = torch.clamp(t_data, original_min, original_max)
         return t_data
 
     def predict_forward(self, data, chain_of_transforms=None):
@@ -247,7 +248,6 @@ class ComposeAdversarialTransformSolver(object):
             tr.eval()
         adv_data = self.forward(data, chain_of_transforms)
         torch.cuda.empty_cache()
-        set_grad(model, requires_grad=True)
         old_state = model.training
         model.train()
         with  _fix_dropout(model):
@@ -273,11 +273,38 @@ class ComposeAdversarialTransformSolver(object):
         model.train(old_state)
         return dist, adv_data, adv_output, warped_back_adv_output
 
-    def optimizing_transform(self, model, data, init_output, optimize_flags, n_iter=1, step_sizes=None):
+    def compute_anatomy_misoverlapping_loss(self,anatomy_mask_images):
+        recovered_anatomy = self.predict_backward(self.predict_forward(anatomy_mask_images))
+        recovered_anatomy [recovered_anatomy>=0.5]=1
+        recovered_anatomy [recovered_anatomy<0.5]=0
+        misoverlap_score = torch.nn.MSELoss(reduction='mean')(recovered_anatomy,anatomy_mask_images)
+        if self.debug: print ('anatomy preserving error:',misoverlap_score)
+        return  misoverlap_score 
+    
+    def optimizing_transform(self, model, data, init_output, optimize_flags, n_iter=1, step_sizes=None, anatomy_mask_images=None,anatomy_reg_weight=50,volume_preserve_tolerance=5*1e-4):
+        """_summary_
+
+        Args:
+            model (nn.Module): segmentation model
+            data (tensor): input image
+            init_output (tensor): output logits before perturbation attack
+            optimize_flags (boolean, or List<boolean>): if set to False, it will not optimize the transformation parameters.
+            n_iter (int): number of iterations. Defaults to 1.
+            step_sizes (float or List<float>, optional): the step sizes for different transformations. Defaults to 1.
+            anatomy_mask_images (tensor, optional): a 0-1 map indicating whether this pixel/voxel belongs to the anatomy. should be the same dimension as the input image. Defaults to None.
+            anatomy_reg_weight (int, optional): weight for the volume/anatomy preserving regularization loss. Defaults to 1.
+        Returns:
+            _type_: _description_
+        """
         # optimize each transform with one forward pass.
-        for i in range(n_iter):
+        stop_flag = False if n_iter>0 else True
+        i_iter = 0
+        one_time_iter = n_iter
+        set_grad(model,False)
+        while stop_flag is False:
             torch.cuda.empty_cache()
             model.zero_grad()
+            i_iter += 1
             self.make_learnable_transformation(
                 optimize_flags=optimize_flags, chain_of_transforms=self.chain_of_transforms)
             augmented_data = self.forward(data.detach().clone())
@@ -294,37 +321,84 @@ class ComposeAdversarialTransformSolver(object):
                 forward_backward_mask[forward_backward_mask != 0] = 1
                 dist = self.loss_fn(
                     pred=warped_back_prediction, reference=init_output,mask=forward_backward_mask)
+                
+                ## add volume preserving constraint:
+                if anatomy_mask_images is not None and abs(anatomy_reg_weight)>1e-32:
+                    assert anatomy_mask_images.size() ==data.size(), "gt mask should be of the same size as input image "
+                    if self.debug: print ('adding volume preserving loss')                        
+                    reg_loss  = anatomy_reg_weight*self.compute_anatomy_misoverlapping_loss(anatomy_mask_images=anatomy_mask_images)
 
+                    if self.debug:
+                        print ("consistency loss", dist.item())
+                        print ("reg_loss:",reg_loss.item())
+                    dist+=reg_loss
             else:
                 dist = self.loss_fn(pred=perturbed_output,
                                     reference=init_output.detach())
             if self.debug:
                 print('[inner loop], step {}: dist {}'.format(
-                    str(i), dist.item()))
-            dist.backward()
-            i_tr = 0
-            for flag, transform in zip(optimize_flags, self.chain_of_transforms):
-                if flag:
-                    if self.debug:
-                        print('update {} parameters'.format(
-                            transform.get_name()))
-                    try:
-                        step_size = step_sizes[i_tr]
-                    except:
-                        logging.warning('use default step size: 1')
-                        step_size = transform.get_step_size()
-                    transform.optimize_parameters(
-                        step_size=step_size/np.sqrt((i+1)))
-                i_tr += 1
+                    str(i_iter), dist.item()))
+            if torch.isnan(dist) or torch.isinf(dist):
+                dist = 0
+            else:
+                dist.backward()
+                i_tr = 0
+                for flag, transform in zip(optimize_flags, self.chain_of_transforms):
+                    if flag:
+                        if self.debug:
+                            print('update {} parameters'.format(
+                                transform.get_name()))
+                        try:
+                            step_size = step_sizes[i_tr]
+                        except:
+                            step_size = transform.get_step_size()
+                            logging.warning(f'use default step size:{step_size}')
+
+                        # transform.optimize_parameters(
+                        #     step_size=step_size/np.sqrt((i_iter+1)))
+                        transform.optimize_parameters(
+                            step_size=step_size)
 
             model.zero_grad()
+            torch.cuda.empty_cache()
 
-        transforms = []
-        for flag, transform in zip(optimize_flags, self.chain_of_transforms):
-            if flag:
-                transform.rescale_parameters()
-            transform.eval()
-            transforms.append(transform)
+            if i_iter == n_iter:
+                transforms = []
+                for flag, transform in zip(optimize_flags, self.chain_of_transforms):
+                    if flag:
+                        transform.rescale_parameters()
+                        transform.eval()
+                    transforms.append(transform)
+                if self.if_contains_geo_transform(transforms) and anatomy_mask_images is not None and abs(anatomy_reg_weight)>1e-32:
+                    print ('activating volume preserving check')
+                    if abs(self.compute_anatomy_misoverlapping_loss(anatomy_mask_images))<=volume_preserve_tolerance:
+                        print ('Success! pass the volume preserving check')
+                        stop_flag=True
+                    else:
+                        if i_iter>=3*one_time_iter:
+                            stop_flag=True
+                            RuntimeWarning('warning: optimization time is 3X longer than expected, use random initialzed one instead. please consider to narrow down the allowed affine transformation search space or use smaller step size')
+                            self.init_random_transformation(anatomy_mask_images=anatomy_mask_images,volume_preserve_tolerance=volume_preserve_tolerance)
+
+                        else:
+                            if i_iter==2*one_time_iter:
+                                self.init_random_transformation(anatomy_mask_images=anatomy_mask_images,volume_preserve_tolerance=volume_preserve_tolerance)
+                                n_iter+=one_time_iter
+                                print ('warning: the volume is not preserved, will continue search with a new initialization') 
+                            else:
+                                n_iter+=1
+                                print ('warning: the volume is not preserved, will continue search with one more step')
+                        
+                        for flag, transform in zip(optimize_flags, self.chain_of_transforms):
+                            if flag:
+                                transform.train()
+                        transforms.append(transform)
+                        torch.cuda.empty_cache()
+
+                else: 
+                    stop_flag=True
+        torch.cuda.empty_cache()
+        set_grad(model,True)
         return transforms
 
     def rescale_intensity(self, data, new_min=0, new_max=1, eps=1e-20):
@@ -345,7 +419,7 @@ class ComposeAdversarialTransformSolver(object):
 
     def get_net_output(self,model, data):
         '''
-        set up network output function
+        set up network output function, e.g., direct logits from the network
         '''
         return model.forward(data)
 
@@ -355,7 +429,7 @@ class ComposeAdversarialTransformSolver(object):
                 reference_output = self.get_net_output(model,data)
         return reference_output
 
-    def get_adv_data(self, data, model, init_output=None, n_iter=0):
+    def get_adv_data(self, data, model, init_output=None, n_iter=0,optimize_flags=None,step_sizes=None,anatomy_mask_images=None, anatomy_reg_weight=50,volume_preserve_tolerance=5*1e-4):
         """
         given an input data and current segmentation model, return augmented input, and corresponding reference
         if init_output is now, use original prediction as pseudo labels.
@@ -371,11 +445,13 @@ class ComposeAdversarialTransformSolver(object):
         """
         if init_output is None:
             init_output = self.get_init_output(model, data)
-        self.init_random_transformation()
+        if optimize_flags is None:  optimize_flags=[True]*len(self.chain_of_transforms)
+        if step_sizes is None: step_sizes=[1]*len(self.chain_of_transforms)
+        self.init_random_transformation(lazy_load=False, anatomy_mask_images=anatomy_mask_images,volume_preserve_tolerance=volume_preserve_tolerance)
         origin_data = data.detach().clone()
         if n_iter > 0:
             optimized_transforms = self.optimizing_transform(
-                data=data, model=model, init_output=init_output, n_iter=n_iter, optimize_flags=[True]*len(self.chain_of_transforms))
+                data=data, model=model, init_output=init_output, n_iter=n_iter,optimize_flags=optimize_flags,step_sizes=step_sizes, anatomy_mask_images=anatomy_mask_images,anatomy_reg_weight=anatomy_reg_weight,volume_preserve_tolerance=volume_preserve_tolerance)
         else:
             optimized_transforms = self.chain_of_transforms
         augmented_data = self.forward(origin_data, optimized_transforms)
@@ -397,7 +473,7 @@ class ComposeAdversarialTransformSolver(object):
             sum_flag += transform.is_geometric()
         return sum_flag > 0
 
-    def init_random_transformation(self, lazy_load=False):
+    def init_random_transformation(self, lazy_load=False, anatomy_mask_images= None,volume_preserve_tolerance=5*1e-4):
         # initialize transformation parameters
         '''
         randomly initialize random parameters
@@ -411,9 +487,17 @@ class ComposeAdversarialTransformSolver(object):
                     transform.init_parameters()
             else:
                 transform.init_parameters()
+            if transform.is_geometric()==1 and anatomy_mask_images is not None:
+                i_iter = 0
+                while self.compute_anatomy_misoverlapping_loss(anatomy_mask_images)>volume_preserve_tolerance:
+                     transform.init_parameters()
+                     i_iter+=1
+                     if i_iter>10:
+                        Warning ('random initialization: fail to find a good intialized geo transformation in the given range, better to reduce the search space of spatial preserving or increase the tolerance factor')
+                        break
 
-    def reset_transformation(self):
-        self.init_random_transformation(lazy_load=False)
+    def reset_transformation(self, anatomy_mask_images=None, volume_preserve_tolerance=5*1e-4):
+        self.init_random_transformation(lazy_load=False,anatomy_mask_images=anatomy_mask_images,volume_preserve_tolerance=volume_preserve_tolerance)
 
     def set_transformation(self, parameter_list):
         """
@@ -426,6 +510,15 @@ class ComposeAdversarialTransformSolver(object):
         for i, param in enumerate(parameter_list):
             self.chain_of_transforms[i].set_parameters(param)
 
+    def train(self):
+        if self.chain_of_transforms is not None:
+           for transform in self.chain_of_transforms:
+                transform.train()
+    def eval(self):
+        if self.chain_of_transforms is not None:
+            for transform in self.chain_of_transforms:
+                transform.eval()  
+                
     def make_learnable_transformation(self, optimize_flags, chain_of_transforms=None):
         """[summary]
         make transformation parameters learnable

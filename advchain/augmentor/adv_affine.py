@@ -29,8 +29,9 @@ class AdvAffine(AdvTransformBase):
                      'forward_interp': 'bilinear',
                      'backward_interp': 'bilinear'
                  },
+                 image_padding_mode = "zeros",
                  power_iteration=False,
-                 use_gpu=True, debug=False):
+                 use_gpu=True, debug=False, device=torch.device("cuda")):
         '''
         initialization,
 
@@ -59,10 +60,13 @@ class AdvAffine(AdvTransformBase):
             'forward_interp': 'bilinear',
             'backward_interp': 'bilinear'
         }, debug=True)
+
+        image_padding_mode: padding mode for the image, default is "zeros", other options are "border", "reflection","lowest". You can also specify it as a float value, e.g., -1, if the image is normalized to be within [-1,1]
         '''
         super(AdvAffine, self).__init__(spatial_dims=spatial_dims,
-            config_dict=config_dict, use_gpu=use_gpu, debug=debug)
+            config_dict=config_dict, use_gpu=use_gpu, debug=debug,device=device)
         self.power_iteration = power_iteration
+        self.image_padding_mode=image_padding_mode
 
     def init_config(self, config_dict):
         '''
@@ -109,13 +113,15 @@ class AdvAffine(AdvTransformBase):
         self.param = affine_tensor
         return affine_tensor
 
-    def forward(self, data, padding_mode='zeros', interp=None):
+    def forward(self, data, interp=None,padding_mode=None):
         '''
         forward the data to get transformed data
         :param data: input images x, N4HW
         :return:
         tensor: transformed images
         '''
+        if padding_mode is None:
+            padding_mode = self.image_padding_mode
         if self.debug:
             print('apply affine transformation')
         if self.param is None:
@@ -127,24 +133,55 @@ class AdvAffine(AdvTransformBase):
                 self.xi * self.param)
         else:
             self.affine_matrix = self.gen_batch_affine_matrix(self.param)
-
-        transformed_input = self.transform(
-            data, self.affine_matrix, interp=interp, padding_mode=padding_mode)
+        if padding_mode=="lowest":
+            flatten_data = data.view(data.size(0),-1)
+            self.padding_values = torch.min(flatten_data,dim=1,keepdim=True).values.detach().clone()
+            shift_data = data -  self.padding_values
+            transformed_input = self.transform(
+            shift_data, self.affine_matrix, interp=interp, padding_mode='zeros')
+            transformed_input = transformed_input+ self.padding_values
+        elif isinstance(padding_mode,float):
+            self.padding_values = padding_mode
+            shift_data = data -  self.padding_values
+            transformed_input = self.transform(
+            shift_data, self.affine_matrix, interp=interp, padding_mode='zeros')
+            transformed_input = transformed_input+ self.padding_values
+    
+        else:
+            transformed_input = self.transform(
+                data, self.affine_matrix, interp=interp, padding_mode=padding_mode)
         self.diff = data - transformed_input
 
         return transformed_input
 
     def predict_forward(self, data):
-        return self.forward(data)
+        return self.forward(data,padding_mode="zeros")
 
     def predict_backward(self, data):
-        return self.backward(data)
+        return self.backward(data,padding_mode="zeros")
 
-    def backward(self, data, padding_mode='zeros'):
+    def backward(self, data,padding_mode=None):
         assert not self.param is None, 'play forward before backward'
+   
         inverse_matrix = self.get_inverse_matrix(self.affine_matrix)
-        warped_back_output = self.transform(
-            data, inverse_matrix, interp=self.backward_interp, padding_mode=padding_mode)
+        if padding_mode is None:
+            padding_mode = self.image_padding_mode
+        if padding_mode=="lowest":
+            flatten_data = data.view(data.size(0),-1)
+            self.padding_values = torch.min(flatten_data,dim=1,keepdim=True).values.detach().clone()
+            shift_data = data - self.padding_values
+            warped_back_output = self.transform(
+                shift_data, inverse_matrix, interp=self.backward_interp, padding_mode="zeros")
+            warped_back_output +=self.padding_values
+        elif isinstance(padding_mode,float):
+            self.padding_values = padding_mode
+            shift_data = data - self.padding_values
+            warped_back_output = self.transform(
+                shift_data, inverse_matrix, interp=self.backward_interp, padding_mode="zeros")
+            warped_back_output +=self.padding_values
+        else:
+            warped_back_output = self.transform(
+                data, inverse_matrix, interp=self.backward_interp, padding_mode=padding_mode)
         return warped_back_output
 
     def draw_random_affine_tensor_list(self, batch_size, identity_init=False):
@@ -169,14 +206,16 @@ class AdvAffine(AdvTransformBase):
         if self.debug:
             # we assume that affine parameters are independent to each other.
             logger.info('optimize affine')
-
-        if self.power_iteration:
-            grad = self.param.grad.sign()
-            self.param = grad.detach()
-        else:
-            grad = self.param.grad.sign().detach()
-            param = self.param + step_size * grad
-            self.param = param.detach()
+        try:
+            if self.power_iteration:
+                grad = self.param.grad.sign()
+                self.param = grad.detach()
+            else:
+                grad = self.param.grad.sign().detach()
+                param = self.param + step_size * grad
+                self.param = param.detach()
+        except:
+            Warning('fail to optimize')
         return self.param
 
     def rescale_parameters(self):
@@ -219,8 +258,8 @@ class AdvAffine(AdvTransformBase):
                                                                                                          
             batch_size = self.batch_size
             device = self.device
-            O = torch.zeros(batch_size, dtype=torch.float32).to(device)
-            I = torch.ones(batch_size, dtype=torch.float32).to(device)        
+            O = torch.zeros(batch_size, dtype=torch.float32, device = device)
+            I = torch.ones(batch_size, dtype=torch.float32, device = device)        
             translation_matrix =torch.stack(
                                [torch.stack([I, O, O, tx*self.translation_x], dim=-1),
                                 torch.stack([O, I, O, ty*self.translation_y], dim=-1),
@@ -251,12 +290,12 @@ class AdvAffine(AdvTransformBase):
             transformation_matrix = transformation_matrix[:,:3, :4]
         # print ('transformation matrix size',transformation_matrix.size())
         if self.use_gpu:
-            transformation_matrix.cuda()
+            transformation_matrix.to(device=self.device)
         return transformation_matrix
 
     def make_batch_eye_matrix(self, batch_size, device):
-        O = torch.zeros(batch_size, dtype=torch.float32).to(device)
-        I = torch.ones(batch_size, dtype=torch.float32).to(device)
+        O = torch.zeros(batch_size, dtype=torch.float32,device=device)
+        I = torch.ones(batch_size, dtype=torch.float32,device=device)
         if self.spatial_dims ==2:
             eyeMtrx = torch.stack([torch.stack([I, O, O], dim=-1),
                                 torch.stack([O, I, O], dim=-1),
@@ -293,6 +332,8 @@ class AdvAffine(AdvTransformBase):
 
     def is_geometric(self):
         return 1
+
+
 
 
 if __name__ == "__main__":

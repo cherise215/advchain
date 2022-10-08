@@ -6,6 +6,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+
 class AdvNoise(AdvTransformBase):
     """
      Adv Noise
@@ -18,14 +19,16 @@ class AdvNoise(AdvTransformBase):
                               'data_size': [10, 1, 8, 8]
                               },
                  power_iteration=False,
-                 use_gpu=True, debug=False):
+                 ignore_values = None,
+                 use_gpu=True, debug=False, device=torch.device("cuda")):
         '''
         initialization
-
+        ignore_values: ignore the regions with particular values in the data when perturbing. This applies to the senario that the data has been padded with a mask, and we do not want to perturb the mask.
         '''
         super(AdvNoise, self).__init__(spatial_dims=spatial_dims,
-            config_dict=config_dict, use_gpu=use_gpu, debug=debug)
+            config_dict=config_dict, use_gpu=use_gpu, debug=debug, device=device)
         self.power_iteration = power_iteration
+        self.ignore_values = ignore_values ## out-of-image region
 
     def init_config(self, config_dict):
         '''
@@ -72,14 +75,20 @@ class AdvNoise(AdvTransformBase):
             print('add noise')
         if self.param is None:
             self.init_parameters()
+       
         if self.power_iteration and self.is_training:
+            self.diff = self.xi*self.param
             transformed_input = data+self.xi*self.param
         else:
+            self.diff= self.epsilon * self.param
             transformed_input = data+self.epsilon * self.param
-
+        if self.ignore_values is not None:
+            mask = abs(data-self.ignore_values)<1e-8
+            mask = mask.detach().clone()
+            transformed_input[mask]= self.ignore_values
         self.diff = transformed_input - data
-
         return transformed_input
+    
     def rescale_parameters(self):
         #restrict noise in the 1-ball space
         self.param = self.unit_normalize(self.param, p_type='l2')
@@ -106,6 +115,7 @@ class AdvNoise(AdvTransformBase):
 
     def get_name(self):
         return 'noise'
+
 
 
 if __name__ == "__main__":

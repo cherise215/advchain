@@ -9,7 +9,7 @@ logger.setLevel(logging.INFO)
 from advchain.augmentor.adv_transformation_base import AdvTransformBase  # noqa
 
 
-def bspline_kernel_2d(sigma=[1, 1], order=3, asTensor=False, dtype=torch.float32, device='gpu'):
+def bspline_kernel_2d(sigma=[1, 1], order=3, asTensor=False, dtype=torch.float32, device=torch.device("cuda")):
     '''
     generate bspline 2D kernel matrix for interpolation
     From wiki: https://en.wikipedia.org/wiki/B-spline, Fast b-spline interpolation on a uniform sample domain can be
@@ -34,7 +34,7 @@ def bspline_kernel_2d(sigma=[1, 1], order=3, asTensor=False, dtype=torch.float32
     else:
         return kernel[0, 0, ...].numpy()
 
-def bspline_kernel_3d(sigma=[1, 1, 1], order=2, asTensor=False, dtype=torch.float32, device='gpu'):
+def bspline_kernel_3d(sigma=[1, 1, 1], order=2, asTensor=False, dtype=torch.float32, device=torch.device("cuda")):
     kernel_ones = torch.ones(1, 1, *sigma)
     kernel = kernel_ones
     padding = np.array(sigma) - 1
@@ -48,7 +48,7 @@ def bspline_kernel_3d(sigma=[1, 1, 1], order=2, asTensor=False, dtype=torch.floa
     else:
         return kernel[0, 0, ...].numpy()
 class AdvBias(AdvTransformBase):
-    "Adv Bias"
+    #"Adv Bias"
     def __init__(self,
                 spatial_dims=2,
                  config_dict={
@@ -64,19 +64,22 @@ class AdvBias(AdvTransformBase):
                      'space': 'log'},  # generate it in the log space rather than image space, bias =exp(bspline(cpoints)) other wise bias =1+ bspline(cpoints)
                  # perform power iteration to find the saddle points like virtual adversarial training
                  power_iteration=False,
-                 use_gpu=True, debug=False):
+                 ignore_values = None,
+                 use_gpu=True, debug=False,device=torch.device("cuda")):
         """[adv bias field augmentation]
 
         Args:
             config_dict (dict, optional): [description]. Defaults to { 'epsilon':0.3, 'control_point_spacing':[32,32], 'downscale':2, 'data_size':[2,1,128,128], 'interpolation_order':3, 'init_mode':'random', 'space':'log'}.
             power_iteration (bool, optional): [description]. Defaults to False.
+            ignore_values: indicating background pixel value to be ignored, default is None.
             use_gpu (bool, optional): [description]. Defaults to True.
             debug (bool, optional): [description]. Defaults to False.
         """
         super(AdvBias, self).__init__(spatial_dims=spatial_dims,
-            config_dict=config_dict, use_gpu=use_gpu, debug=debug)
+            config_dict=config_dict, use_gpu=use_gpu, debug=debug,device=device)
         self.param = None
         self.power_iteration = power_iteration
+        self.ignore_values=ignore_values
 
     def init_config(self, config_dict):
         '''
@@ -104,8 +107,6 @@ class AdvBias(AdvTransformBase):
         return random transformaion parameters
         '''
         self.init_config(self.config_dict)
-        self._device = 'cuda' if self.use_gpu else 'cpu'
-
         self._dim = len(self.control_point_spacing)
         self.spacing = self.control_point_spacing
         self._dtype = torch.float32
@@ -171,9 +172,19 @@ class AdvBias(AdvTransformBase):
         bias_field = self.clip_bias(bias_field, self.magnitude)
         self.bias_field = bias_field
         self.diff = bias_field
-
-        transformed_input = bias_field*data
-
+       
+        if self.ignore_values is not None:
+            if isinstance(self.ignore_values,float):
+                mask = abs(data-self.ignore_values)<1e-8
+                mask = mask.detach().clone()
+                transformed_input = data*bias_field
+                transformed_input[mask] = self.ignore_values
+                # print ('mask values=',self.ignore_values)
+            else:
+                Warning('ignore values must be in float type, but got,', self.ignore_values)
+        else:
+            transformed_input = bias_field*data
+            
         return transformed_input
 
     def backward(self, data):
@@ -227,7 +238,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         self.high = np.Inf
         # initialize control points parameters for optimization
         if mode == 'gaussian':
-            self.param = torch.ones(*self.cp_grid).normal_(mean=0, std=0.5)
+            self.param = torch.ones(*self.cp_grid,dtype=self._dtype, device=self.device).normal_(mean=0, std=0.5)
         elif mode == 'random':
             if self.use_log:
                 self.low = np.log(1-self.magnitude)
@@ -236,16 +247,16 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
                 self.low  = -self.magnitude
                 self.high = self.magnitude
 
-            self.param = torch.rand(*self.cp_grid)*(self.high-self.low)+self.low
+            self.param = torch.rand(*self.cp_grid,dtype=self._dtype, device=self.device)*(self.high-self.low)+self.low
 
         elif mode == 'identity':
             # static initialization, bias free
-            self.param = torch.zeros(*self.cp_grid)
+            self.param = torch.zeros(*self.cp_grid,dtype=self._dtype, device=self.device)
         else:
             raise NotImplementedError
 
         # self.param = self.unit_normalize(self.param, p_type='l2')
-        self.param = self.param.to(dtype=self._dtype, device=self._device)
+        # self.param = self.param.to(dtype=self._dtype, device=self.device)
 
         # convert to integer
         self._stride = self._stride.astype(dtype=int).tolist()
@@ -301,24 +312,26 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
             print('[bias] after bspline intep, size:', bias_field_tmp.size())
         scale_factor_h = self._image_size[0] / bias_field_tmp.size(2)
         scale_factor_w = self._image_size[1] / bias_field_tmp.size(3)
+        diff_bias  = bias_field_tmp
         if self._dim==2:
             if scale_factor_h > 1 or scale_factor_w > 1:
                 upsampler = torch.nn.Upsample(size = (self._image_size[0] , self._image_size[1]), mode='bilinear',
                                                 align_corners=False)
-                bias_field_tmp = upsampler(bias_field_tmp)
+                diff_bias = upsampler(bias_field_tmp)
 
         elif self._dim==3:
             scale_factor_d = self._image_size[2] / bias_field_tmp.size(4)
             if scale_factor_h > 1 or scale_factor_w > 1 or scale_factor_d > 1:
                 upsampler = torch.nn.Upsample(scale_factor=(scale_factor_h, scale_factor_w,scale_factor_d), mode='trilinear',
                                             align_corners=False)
-                bias_field_tmp = upsampler(bias_field_tmp)
+                diff_bias = upsampler(bias_field_tmp)
+        
                 # print('recover resolution, size of bias field:', diff_bias.size())
             
         if self.use_log:
-            bias_field = torch.exp(bias_field_tmp)
+            bias_field = torch.exp(diff_bias)
         else:
-            bias_field=1+bias_field_tmp
+            bias_field=1+diff_bias
         return bias_field
 
     def clip_bias(self, bias_field, magnitude=None):
@@ -351,13 +364,13 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         '''
         if self._dim == 2:
             
-            self._kernel = bspline_kernel_2d(spacing, order=order, asTensor=True, dtype=self._dtype, device=self._device)
+            self._kernel = bspline_kernel_2d(spacing, order=order, asTensor=True, dtype=self._dtype, device=self.device)
         elif self._dim == 3:
-            self._kernel = bspline_kernel_3d(spacing, order=order, asTensor=True, dtype=self._dtype, device=self._device)
+            self._kernel = bspline_kernel_3d(spacing, order=order, asTensor=True, dtype=self._dtype, device=self.device)
         self._padding = (np.array(self._kernel.size()) - 1) / 2
         self._padding = self._padding.astype(dtype=int).tolist()
         self._kernel.unsqueeze_(0).unsqueeze_(0)
-        self._kernel = self._kernel.to(dtype=self._dtype, device=self._device)
+        self._kernel = self._kernel.to(dtype=self._dtype, device=self.device)
         return self._kernel
 
     def get_name(self):
@@ -365,6 +378,8 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
 
     def is_geometric(self):
         return 0
+
+
 
 
 

@@ -173,7 +173,7 @@ def set_grad(module, requires_grad=False):
         p.requires_grad = requires_grad
 
 
-def random_chain(alist, max_length=None,*args):
+def random_chain(alist, max_length=None, size_list=None):
     """[select a sub list from  a list and chained them in a random order]
 
     Args:
@@ -186,7 +186,7 @@ def random_chain(alist, max_length=None,*args):
         max_length  = min(max_length,length)
     assert length >= 1, "input list must contains at least one element"
     if length == 1:
-        results = [alist]
+        results = [alist[0]]
         if len(args) > 0:
             for arg in args:
                 assert len(arg) == 1, 'must share equal size'
@@ -202,11 +202,7 @@ def random_chain(alist, max_length=None,*args):
     # lambda : r is an unary function which returns r
     random.shuffle(alist, lambda: r)
     # using the same function as used in prev line so that shuffling order is the same
-    results = []
-    results.append(alist[:sub_len])
-    if len(args) >= 0:
-        for arg in args:
-            random.shuffle(arg, lambda: r)
-            results.append(arg[:sub_len])
-
-    return results
+    if size_list is not None and len(size_list) >= 0:
+        random.shuffle(size_list, lambda: r)
+        return alist[:sub_len], size_list[:sub_len]
+    return alist[:sub_len]

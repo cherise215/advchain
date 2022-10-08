@@ -69,10 +69,12 @@ def calc_segmentation_consistency(output, reference, divergence_types=['kl', 'co
                     target_pred = output_reference
                 input_pred = torch.softmax(output_new, dim=1)
                 cnt = 0
+                use_gpu = input_pred.device!=torch.device("cpu")
+
                 for i in range(1, num_classes):
                     cnt += 1
                     loss += contour_loss(input=input_pred[:, [i], ], target=(target_pred[:, [i]]), ignore_background=False, mask=mask,
-                                         one_hot_target=False)
+                                         one_hot_target=False,use_gpu=use_gpu,device = input_pred.device)
                 if cnt > 0:
                     loss /= cnt
 
@@ -97,7 +99,7 @@ def calc_segmentation_kl_consistency(input, target):
     return loss
 
 
-def contour_loss(input, target,  use_gpu=True, ignore_background=True, one_hot_target=True, mask=None):
+def contour_loss(input, target,  use_gpu=True, ignore_background=True, one_hot_target=True, mask=None,device=torch.device("cuda")):
     '''
     calc the contour loss across object boundaries (WITHOUT background class)
     :param input: NDArray. N*num_classes*H*W : pixelwise probs. for each class e.g. the softmax output from a neural network
@@ -111,7 +113,7 @@ def contour_loss(input, target,  use_gpu=True, ignore_background=True, one_hot_t
         1), input.size(2), input.size(3)
     spatial_dims = len(input.size()) - 2
     if one_hot_target:
-        onehot_mapper = One_Hot(depth=num_classes, use_gpu=use_gpu)
+        onehot_mapper = One_Hot(depth=num_classes, use_gpu=use_gpu, device=device)
         target = target.long()
         onehot_target = onehot_mapper(target).contiguous().view(
              input.size())
@@ -157,8 +159,8 @@ def contour_loss(input, target,  use_gpu=True, ignore_background=True, one_hot_t
                         bias=False)
         conv_y.weight = nn.Parameter(torch.from_numpy(y_filter).float())
         if use_gpu:
-            conv_y = conv_y.cuda()
-            conv_x = conv_x.cuda()
+            conv_y = conv_y.to(input.device)
+            conv_x = conv_x.to(input.device)
         for param in conv_y.parameters():
             param.requires_grad = False
         for param in conv_x.parameters():
@@ -190,9 +192,9 @@ def contour_loss(input, target,  use_gpu=True, ignore_background=True, one_hot_t
         conv_y.weight = nn.Parameter(torch.from_numpy(gy).float())
         conv_z.weight = nn.Parameter(torch.from_numpy(gz).float())
         if use_gpu:
-            conv_x = conv_x.cuda()
-            conv_y = conv_y.cuda()
-            conv_z = conv_z.cuda()
+            conv_x = conv_x.to(input.device)
+            conv_y = conv_y.to(input.device)
+            conv_z = conv_z.to(input.device)
         for param in conv_x.parameters():
             param.requires_grad = False
         for param in conv_y.parameters():
@@ -248,11 +250,12 @@ def kl_divergence(reference, pred, mask=None, is_gt=False):
 
 
 class One_Hot(nn.Module):
-    def __init__(self, depth, use_gpu=True):
+    def __init__(self, depth, use_gpu=True, device=torch.device("cuda")):
         super(One_Hot, self).__init__()
         self.depth = depth
+        self.device = device if use_gpu else torch.device("cpu")
         if use_gpu:
-            self.ones = torch.sparse.torch.eye(depth).cuda()
+            self.ones = torch.sparse.torch.eye(depth).to(self.device)
         else:
             self.ones = torch.sparse.torch.eye(depth)
 

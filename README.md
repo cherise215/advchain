@@ -13,7 +13,39 @@ Please cite our work if you find it useful in your work.
 ## License:
 All rights reserved. 
 
+
+## Citation
+If you find this useful for your work, please consider citing
+
+```
+@ARTICLE{Chen_2021_Enhancing,
+  title  = "Enhancing {MR} Image Segmentation with Realistic Adversarial Data Augmentation",
+  journal = {Medical Image Analysis},
+  author = "Chen, Chen and Qin, Chen and Ouyang, Cheng and Wang, Shuo and Qiu,
+            Huaqi and Chen, Liang and Tarroni, Giacomo and Bai, Wenjia and
+            Rueckert, Daniel",
+    year = 2022,
+    note = {\url{https://authors.elsevier.com/sd/article/S1361-8415(22)00230-4}}
+}
+
+@INPROCEEDINGS{Chen_MICCAI_2020_Realistic,
+  title     = "Realistic Adversarial Data Augmentation for {MR} Image
+               Segmentation",
+  booktitle = "Medical Image Computing and Computer Assisted Intervention --
+               {MICCAI} 2020",
+  author    = "Chen, Chen and Qin, Chen and Qiu, Huaqi and Ouyang, Cheng and
+               Wang, Shuo and Chen, Liang and Tarroni, Giacomo and Bai, Wenjia
+               and Rueckert, Daniel",
+  publisher = "Springer International Publishing",
+  pages     = "667--677",
+  year      =  2020
+}
+
+```
+
+
 ## News:
+[2022-10-08] now support generating anatomical structure preserving transformations, with custom padding mode for warping images that are normalized NOT in [0,1]. Please see Q4, and Q5 below for reference.
 [2022-07-16] now support 3D augmentation (beta)! Please see `advchain/example/adv_chain_data_generation_cardiac_2D_3D.ipynb` to find example usage.
 
 ## Introduction
@@ -261,32 +293,9 @@ for data in loader:
 - Q3: Can I add my own transformation function?
 - A3. Yes. AdvChain lets you create your own custom image transformation function to implement in your projects. This is achieved by extending [advchain/augmentor/adv_transformation_base](advchain/augmentor/adv_transformation_base.py) and implementing basic functions.
 
-## Citation
-If you find this useful for your work, please consider citing
+- Q4: My images are normalized to be within [-1,1] where background pixels are all -1s. Any modifications I need to make to generate realistic images?
+- A4: Currently, we only test on images with [0,1]. However, it is easy to be adapted to other range. For photometric transformations, there is nothing you need to change. Unless you want to AdvChain focus on non-background regions to attack, this can be achieved by  setting `ignore_values = <backrgound pixel value>` when you instanitialzie `AdvNoise` and `AdvBias`. For geometric transformations, you need to check the `image_padding_mode` in `AdvAffine` to make sure it produce the desired output you want. Currently, by default we use zero paddings to fill regions out-of-image after transformation. This can be changed by setting `image_padding_mode` to a particular value, e.g. `image_padding_mode=-1` or `image_padding_mode='lowest'`. The latter will fill those out-of-image regions with the lowest values in the orginal input. For local deformations, similarly, you can specify `padding_value=-1` for this case.
 
-```
-@ARTICLE{Chen_2021_Enhancing,
-  title  = "Enhancing {MR} Image Segmentation with Realistic Adversarial Data Augmentation",
-  journal = {Medical Image Analysis},
-  author = "Chen, Chen and Qin, Chen and Ouyang, Cheng and Wang, Shuo and Qiu,
-            Huaqi and Chen, Liang and Tarroni, Giacomo and Bai, Wenjia and
-            Rueckert, Daniel",
-    year = 2022,
-    note = {\url{https://authors.elsevier.com/sd/article/S1361-8415(22)00230-4}}
-}
+- Q5: I would like to perform adversarial data generation while the anatomy is still preserved and visible. How can I achieve this?
+- A5: AdvChain allows to generate anatomical preserving images by adding L2 penalty. Simple providing anatomical labels in the ` anatomy_mask_images=<mask>` when you call `adversarial_training` function. You may need to adjust the learning rate, the regularization weight, and the number of steps to find a feasible solution. However, this is a soft constraint without formal guarantees. So, if advchain fails to find one that satisfy these constraint, it will run random augmentation instead, and return one that can meet the constraint.
 
-
-@INPROCEEDINGS{Chen_MICCAI_2020_Realistic,
-  title     = "Realistic Adversarial Data Augmentation for {MR} Image
-               Segmentation",
-  booktitle = "Medical Image Computing and Computer Assisted Intervention --
-               {MICCAI} 2020",
-  author    = "Chen, Chen and Qin, Chen and Qiu, Huaqi and Ouyang, Cheng and
-               Wang, Shuo and Chen, Liang and Tarroni, Giacomo and Bai, Wenjia
-               and Rueckert, Daniel",
-  publisher = "Springer International Publishing",
-  pages     = "667--677",
-  year      =  2020
-}
-
-```
