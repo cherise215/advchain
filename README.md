@@ -235,7 +235,7 @@ for data in loader:
         divergence_weights=[1.0,0.5],
         use_gpu= True,
         debug=False,
-        if_norm_image=True, ## turn it on when intensity range needs to be preserved
+        if_norm_image=True, ## turn it on when intensity range needs to be preserved. Sometimes, it works better when this option is off.
        )
     solver.init_random_transformation()
     ## 3. optimize transformation parameters to augment data and compute regularization loss
