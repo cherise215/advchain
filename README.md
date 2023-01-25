@@ -116,7 +116,7 @@ augmentor_noise= AdvNoise(
                 spatial_dims=spatial_dims,
                 config_dict={'epsilon':1,
                 'xi':1e-6,
-                 'data_size':(n,c,h,w)}
+                 'data_size':(n,c,h,w)},
                  debug=debug)
     
 augmentor_affine= AdvAffine(
