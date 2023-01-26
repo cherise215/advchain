@@ -145,7 +145,7 @@ class ComposeAdversarialTransformSolver(object):
             print('[outer loop] loss', dist.item())
         return dist
 
-    def forward(self, data, chain_of_transforms=None):
+    def forward(self, data, chain_of_transforms=None,interp=None,padding_mode=None):
         '''
         forward the data to get transformed data
         :param data: input images x, NCHW
@@ -161,7 +161,7 @@ class ComposeAdversarialTransformSolver(object):
             chain_of_transforms = self.chain_of_transforms
         is_training = False
         for transform in chain_of_transforms:
-            t_data = transform.forward(t_data)
+            t_data = transform.forward(t_data,interp=interp,padding_mode=padding_mode)
             self.diffs.append(transform.diff)
             is_training = (is_training or transform.is_training)
         if self.if_norm_image:
@@ -181,7 +181,7 @@ class ComposeAdversarialTransformSolver(object):
     def eval(self):
         for transform in self.chain_of_transforms:
             transform.eval()
-    def predict_forward(self, data, chain_of_transforms=None):
+    def predict_forward(self, data, chain_of_transforms=None,interp=None,padding_mode=None):
         '''
         transform the prediction with the learned/random data augmentation, only applies to geomtric transformations.
         :param data: input images x, NCHW
@@ -192,11 +192,11 @@ class ComposeAdversarialTransformSolver(object):
         if chain_of_transforms is None:
             chain_of_transforms = self.chain_of_transforms
         for transform in chain_of_transforms:
-            data = transform.predict_forward(data)
+            data = transform.predict_forward(data,interp=interp,padding_mode=padding_mode)
             self.diffs.append(transform.diff)
         return data
 
-    def backward(self, data, chain_of_transforms=None):
+    def backward(self, data, chain_of_transforms=None,interp=None,padding_mode=None):
         '''
         warp it back to image space
         only activate when the augmentation is a geometric transformation
@@ -204,10 +204,10 @@ class ComposeAdversarialTransformSolver(object):
         if chain_of_transforms is None:
             chain_of_transforms = self.chain_of_transforms
         for transform in reversed(chain_of_transforms):
-            data = transform.backward(data)
+            data = transform.backward(data,interp=interp,padding_mode=padding_mode)
         return data
 
-    def predict_backward(self, data, chain_of_transforms=None):
+    def predict_backward(self, data, chain_of_transforms=None,interp=None,padding_mode=None):
         '''
         warp it back to image space
         only activate when the augmentation is a geometric transformation
@@ -215,7 +215,7 @@ class ComposeAdversarialTransformSolver(object):
         if chain_of_transforms is None:
             chain_of_transforms = self.chain_of_transforms
         for transform in reversed(chain_of_transforms):
-            data = transform.predict_backward(data)
+            data = transform.predict_backward(data,interp=interp,padding_mode=padding_mode)
         return data
 
     def loss_fn(self, pred, reference, mask=None):

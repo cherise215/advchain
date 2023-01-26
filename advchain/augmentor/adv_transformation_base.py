@@ -84,7 +84,7 @@ class AdvTransformBase(object):
     def optimize_parameters(self, step_size=None):
         raise NotImplementedError
 
-    def forward(self, data):
+    def forward(self, data,**kwargs):
         '''
         forward the data to get augmented data
         :param data: input images x, N4HW
@@ -93,7 +93,7 @@ class AdvTransformBase(object):
         '''
         raise NotImplementedError
 
-    def backward(self, data):
+    def backward(self, data,**kwargs):
         """[warps images back to its  original image coordinates if this is a geometric transformation ]
 
         Args:
@@ -104,7 +104,7 @@ class AdvTransformBase(object):
         """
         raise NotImplementedError
 
-    def predict_forward(self, data):
+    def predict_forward(self, data, **kwargs):
         """[summary]
         transforms predictions using the corresponding transformation matrix if this is a geometric transformation ]
         Args:
@@ -115,7 +115,7 @@ class AdvTransformBase(object):
         """
         raise NotImplementedError
 
-    def predict_backward(self, data):
+    def predict_backward(self, data,**kwargs):
         """[warps predictions back to its  original image coordinates if this is a geometric transformation ]
 
         Args:

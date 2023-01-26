@@ -99,10 +99,10 @@ class AdvNoise(AdvTransformBase):
                   torch.max(self.diff))
         return data
 
-    def predict_forward(self, data):
+    def predict_forward(self, data, **kwargs):
         return data
 
-    def predict_backward(self, data):
+    def predict_backward(self, data, **kwargs):
         return data
 
     def train(self):
