@@ -211,10 +211,12 @@ class AdvMorph(AdvTransformBase):
                  config_dict={'epsilon': 1.5,
                               'data_size': [10, 1, 8, 8],
                               'vector_size': [4, 4],
-                              'interpolator_mode': 'bilinear'
+                                'forward_interp': 'bilinear',
+                                'backward_interp': 'bilinear'
                               },
                  power_iteration=False,
-                 device = torch.device("cuda"),padding_value=None,
+                 device = torch.device("cuda"),
+                 image_padding_mode = "zeros",
                  use_gpu: bool = True, debug: bool = False):
         """_summary_
 
@@ -235,11 +237,12 @@ class AdvMorph(AdvTransformBase):
         self.gaussian_ks = 5
         self.smooth_iter = 1
         self.num_steps = 8  # internal steps for scaling and squaring intergration
-        self.interpolator_mode = 'bilinear'
+        self.forward_interp = 'bilinear'
+        self.backward_interp = 'bilinear'     
         self.integration_type = 'ss'
         self.param = None
         self.power_iteration = power_iteration
-        self.padding_value = padding_value
+        self.image_padding_mode=image_padding_mode
 
     def init_config(self, config_dict):
         '''
@@ -249,7 +252,10 @@ class AdvMorph(AdvTransformBase):
         self.xi = 0.5
         self.data_size = config_dict['data_size']
         self.vector_size = config_dict['vector_size']
-        self.interpolator_mode = config_dict['interpolator_mode']
+        if 'forward_interp' in config_dict:
+            self.forward_interp = config_dict['forward_interp']
+        if 'backward_interp' in config_dict:
+            self.backward_interp = config_dict['backward_interp']
 
     def init_parameters(self):
         '''
@@ -276,7 +282,7 @@ class AdvMorph(AdvTransformBase):
             print('init velocity:', vector.size())
         return vector
 
-    def forward(self, data, interpolation_mode=None):
+    def forward(self, data, interp=None,padding_mode=None):
         '''
         forward the data to get transformed data
         :param data: input images x, N4HW
@@ -287,8 +293,8 @@ class AdvMorph(AdvTransformBase):
             print('apply morphological transformation')
         if self.param is None:
             self.param = self.init_parameters()
-        if interpolation_mode is None:
-            interpolation_mode = self.interpolator_mode
+        if interp is None:
+            interp = self.forward_interp
         if self.power_iteration and self.is_training:
             dxy, displacement = self.get_deformation_displacement_field(
                 duv=self.xi*self.param)
@@ -297,39 +303,38 @@ class AdvMorph(AdvTransformBase):
                 duv=self.epsilon*self.param)
         dxy = torch.clamp(
             dxy, -1, 1)
-        transformed_image = self.transform(data, dxy, mode=interpolation_mode)
+        transformed_image = self.transform(data, dxy, interp=interp,padding_mode=padding_mode)
 
         self.diff = transformed_image-data
         self.displacement = displacement
       
         return transformed_image
 
-    def backward(self, data, interpolation_mode=None):
+    def backward(self, data, interp=None,padding_mode=None):
         '''
         backward image
         '''
-        if interpolation_mode is None:
-            interpolation_mode = self.interpolator_mode
+        if interp is None:
+            interp = self.backward_interp
         if self.power_iteration and self.is_training:
             dxy, displacement = self.get_deformation_displacement_field(
                 duv=-self.xi*self.param)
         else:
             dxy, displacement = self.get_deformation_displacement_field(
                 duv=-self.epsilon*self.param)
-        
         # dxy = torch.clamp(
         #     dxy, -1, 1)
         transformed_image = self.transform(
-            data, dxy, mode=self.interpolator_mode)
+            data, dxy, interp=interp, padding_mode=padding_mode)
         if self.debug:
             logging.info('warp back.')
         return transformed_image
 
-    def predict_forward(self, data):
-        return self.forward(data)
+    def predict_forward(self, data,interp=None,padding_mode=None):
+        return self.forward(data,interp=interp,padding_mode=padding_mode)
 
-    def predict_backward(self, data):
-        return self.backward(data)
+    def predict_backward(self, data,interp=None,padding_mode=None):
+        return self.backward(data,interp=interp,padding_mode=padding_mode)
 
     def get_deformation_displacement_field(self, duv=None):
         if duv is None:
@@ -516,7 +521,7 @@ class AdvMorph(AdvTransformBase):
         self.param =self.unit_normalize(param)
         return self.param
 
-    def transform(self, data, deformation_dxy, mode='bilinear', padding_mode='border'):
+    def transform(self, data, deformation_dxy, interp=None, padding_mode=None):
         '''
         transform images with the given deformation fields
         :param data: input data, N*C*H*W
@@ -530,17 +535,26 @@ class AdvMorph(AdvTransformBase):
             grid_tensor = deformation_dxy.permute(0, 2, 3, 1)  # N*H*W*2
         else:
             grid_tensor = deformation_dxy.permute(0, 2, 3, 4, 1)
-        # transform images
-        if self.padding_value is not None:
-            if isinstance(self.padding_value,float):
-                data = data-self.padding_value
-                transformed_image = F.grid_sample(
-                        data, grid_tensor, mode=mode, align_corners=self.align_corners,padding_mode = 'zeros')
-                transformed_image +=self.padding_value
+        if padding_mode is None:
+            padding_mode = self.image_padding_mode
+        if interp is None:
+            interp = self.forward_interp
+        if padding_mode=="lowest":
+            flatten_data = data.view(data.size(0),-1)
+            self.padding_values = torch.min(flatten_data,dim=1,keepdim=True).values.detach().clone()
+            shift_data = data -  self.padding_values
+            transformed_image = F.grid_sample(
+                        shift_data, grid_tensor, mode=interp, align_corners=self.align_corners,padding_mode = 'zeros')
+            transformed_image +=self.padding_values
+        elif isinstance(padding_mode,float) or isinstance(padding_mode,int):
+            self.padding_values = padding_mode
+            shift_data = data -  self.padding_values
+            transformed_image = F.grid_sample(
+                        shift_data, grid_tensor, mode=interp, align_corners=self.align_corners,padding_mode = 'zeros')
+            transformed_image +=self.padding_values
         else:
-              transformed_image = F.grid_sample(
-                        data, grid_tensor, mode=mode, align_corners=self.align_corners,padding_mode = 'zeros')
-        # gen flow field
+            transformed_image = F.grid_sample(
+                        data, grid_tensor, mode=interp, align_corners=self.align_corners,padding_mode = padding_mode)
         return transformed_image
 
     def get_name(self):

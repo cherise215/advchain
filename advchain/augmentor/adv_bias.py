@@ -149,7 +149,7 @@ class AdvBias(AdvTransformBase):
 
 
 
-    def forward(self, data):
+    def forward(self, data, **kwargs):
         '''
         forward the data to get transformed data
         :param data: input images x, N4HW
@@ -187,16 +187,16 @@ class AdvBias(AdvTransformBase):
             
         return transformed_input
 
-    def backward(self, data):
+    def backward(self, data,**kwargs):
         if self.debug:
             print('max magnitude', torch.max(
                 torch.abs(self.bias_field-1)))
         return data
 
-    def predict_forward(self, data):
+    def predict_forward(self, data,**kwargs):
         return data
 
-    def predict_backward(self, data):
+    def predict_backward(self, data,**kwargs):
         return data
 
     def init_control_points_config(self, init_mode=None):

@@ -64,7 +64,7 @@ class AdvNoise(AdvTransformBase):
         return self.param
 
 
-    def forward(self, data):
+    def forward(self, data, **kwargs):
         '''
         forward the data to get transformed data
         :param data: input images x, N4HW
@@ -93,7 +93,7 @@ class AdvNoise(AdvTransformBase):
         #restrict noise in the 1-ball space
         self.param = self.unit_normalize(self.param, p_type='l2')
 
-    def backward(self, data):
+    def backward(self, data, **kwargs):
         if self.debug:
             print('noise back, no action:, maxium noise',
                   torch.max(self.diff))
